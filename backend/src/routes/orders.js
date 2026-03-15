@@ -88,7 +88,6 @@ router.post('/', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    // BUG: No validation on status transitions - can go from 'delivered' back to 'pending'
     const result = await pool.query(
       'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
       [status, req.params.id]
@@ -99,6 +98,48 @@ router.patch('/:id/status', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order status' });
+  }
+});
+
+// Cancel order (only pending or confirmed; restores inventory)
+router.post('/:id/cancel', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const orderId = req.params.id;
+    const orderResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1',
+      [orderId]
+    );
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    const order = orderResult.rows[0];
+    const status = order.status;
+    if (status !== 'pending' && status !== 'confirmed') {
+      return res.status(400).json({
+        error: 'Only pending or confirmed orders can be cancelled',
+      });
+    }
+    await client.query('BEGIN');
+    await client.query(
+      'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
+      ['cancelled', orderId]
+    );
+    await client.query(
+      'UPDATE products SET inventory_count = inventory_count + $1 WHERE id = $2',
+      [order.quantity, order.product_id]
+    );
+    await client.query('COMMIT');
+    const updated = await client.query(
+      'SELECT * FROM orders WHERE id = $1',
+      [orderId]
+    );
+    res.json(updated.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: 'Failed to cancel order' });
+  } finally {
+    client.release();
   }
 });
 

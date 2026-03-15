@@ -1,22 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { fetchOrders, updateOrderStatus } from '../api';
+import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  const [message, setMessage] = useState(null);
 
-  // BUG: No loading state, no error handling - shows blank screen if API fails
   useEffect(() => {
-    fetchOrders().then(data => setOrders(data));
+    fetchOrders()
+      .then(data => setOrders(Array.isArray(data) ? data : []))
+      .catch(() => setOrders([]));
   }, []);
 
   const handleStatusChange = async (orderId, newStatus) => {
-    await updateOrderStatus(orderId, newStatus);
-    // BUG: useEffect has missing dependency - this manual refetch is a workaround
-    // but the stale closure over sortField/sortDir means sorting resets
-    const data = await fetchOrders();
-    setOrders(data);
+    try {
+      await updateOrderStatus(orderId, newStatus);
+      const data = await fetchOrders();
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Failed to update status' });
+    }
+  };
+
+  const handleCancelClick = (order) => {
+    const ok = window.confirm(
+      `Cancel order #${order.id} (${order.product_name}, qty ${order.quantity})? Inventory will be restored.`
+    );
+    if (!ok) return;
+    setMessage(null);
+    cancelOrder(order.id)
+      .then(async () => {
+        const data = await fetchOrders();
+        setOrders(Array.isArray(data) ? data : []);
+        setMessage({ type: 'success', text: 'Order cancelled. Inventory restored.' });
+      })
+      .catch((err) => {
+        setMessage({ type: 'error', text: err.message || 'Failed to cancel order' });
+      });
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -39,11 +60,17 @@ function OrderList() {
     }
   };
 
-  const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered'];
+  const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+  const canCancel = (status) => status === 'pending' || status === 'confirmed';
 
   return (
     <div className="order-list">
       <h2>Orders ({orders.length})</h2>
+      {message && (
+        <div className={`message ${message.type}`} style={{ marginBottom: '1rem' }}>
+          {message.text}
+        </div>
+      )}
       <table className="order-table">
         <thead>
           <tr>
@@ -54,12 +81,12 @@ function OrderList() {
             <th onClick={() => handleSort('total_amount')} style={{ cursor: 'pointer' }}>Total</th>
             <th>Status</th>
             <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Date</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          {/* BUG: Using array index as key on a sortable list */}
-          {sortedOrders.map((order, index) => (
-            <tr key={index}>
+          {sortedOrders.map((order) => (
+            <tr key={order.id}>
               <td>#{order.id}</td>
               <td>
                 <div>{order.customer_name}</div>
@@ -80,6 +107,17 @@ function OrderList() {
                 </select>
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
+              <td>
+                {canCancel(order.status) && (
+                  <button
+                    type="button"
+                    className="cancel-btn"
+                    onClick={() => handleCancelClick(order)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
