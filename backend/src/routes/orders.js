@@ -112,4 +112,51 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+// Cancel order - only pending/confirmed orders can be cancelled
+router.post('/:id/cancel', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    if (orderResult.rows.length === 0) {
+      console.warn(`Cancel attempt on non-existent order #${req.params.id}`);
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'pending' && order.status !== 'confirmed') {
+      console.warn(`Cancel rejected: order #${order.id} (customer #${order.customer_id}) is already ${order.status}`);
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Cannot cancel an order that is already ${order.status}` });
+    }
+
+    // mark as cancelled
+    await client.query(
+      'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
+      ['cancelled', req.params.id]
+    );
+
+    // restore inventory
+    await client.query(
+      'UPDATE products SET inventory_count = inventory_count + $1 WHERE id = $2',
+      [order.quantity, order.product_id]
+    );
+
+    await client.query('COMMIT');
+
+    // fetch the updated order to return
+    const updated = await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    res.json(updated.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(`Failed to cancel order #${req.params.id}:`, err.message);
+    res.status(500).json({ error: 'Failed to cancel order' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
