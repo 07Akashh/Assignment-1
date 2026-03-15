@@ -2,29 +2,18 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 
-// Get all orders
-// BUG: N+1 query - fetches customer and product names in a loop
+// Get all orders — single JOIN query instead of N+1 loop
 router.get('/', async (req, res) => {
   try {
-    const ordersResult = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    const orders = ordersResult.rows;
-
-    // Fetch customer and product details for each order individually
-    const enrichedOrders = [];
-    for (const order of orders) {
-      const customerResult = await pool.query('SELECT name, email FROM customers WHERE id = $1', [order.customer_id]);
-      const productResult = await pool.query('SELECT name, price FROM products WHERE id = $1', [order.product_id]);
-
-      enrichedOrders.push({
-        ...order,
-        customer_name: customerResult.rows[0]?.name || 'Unknown',
-        customer_email: customerResult.rows[0]?.email || '',
-        product_name: productResult.rows[0]?.name || 'Unknown',
-        product_price: productResult.rows[0]?.price || 0,
-      });
-    }
-
-    res.json(enrichedOrders);
+    const result = await pool.query(
+      `SELECT o.*, c.name AS customer_name, c.email AS customer_email,
+              p.name AS product_name, p.price AS product_price
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.id
+       JOIN products p ON o.product_id = p.id
+       ORDER BY o.created_at DESC`
+    );
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
@@ -51,51 +40,66 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create order
-// BUG: Race condition - read inventory, then decrement separately. Two concurrent
-// requests can both read inventory=1, both pass the check, and both decrement.
+// Create order — uses a DB transaction with SELECT FOR UPDATE to prevent
+// race conditions where two concurrent requests could both pass the inventory
+// check and both decrement, resulting in negative inventory (oversell).
 router.post('/', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { customer_id, product_id, quantity, shipping_address } = req.body;
 
-    // Check inventory
-    const productResult = await pool.query('SELECT * FROM products WHERE id = $1', [product_id]);
+    await client.query('BEGIN');
+
+    // Lock the product row so concurrent requests block until this transaction commits
+    const productResult = await client.query(
+      'SELECT * FROM products WHERE id = $1 FOR UPDATE',
+      [product_id]
+    );
     if (productResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Product not found' });
     }
 
     const product = productResult.rows[0];
 
     if (product.inventory_count < quantity) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient inventory' });
     }
 
     const total_amount = product.price * quantity;
 
     // Create order
-    const orderResult = await pool.query(
+    const orderResult = await client.query(
       `INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
       [customer_id, product_id, quantity, total_amount, shipping_address]
     );
 
-    // Decrement inventory
-    await pool.query(
+    // Decrement inventory atomically within the same transaction
+    await client.query(
       'UPDATE products SET inventory_count = inventory_count - $1 WHERE id = $2',
       [quantity, product_id]
     );
 
+    await client.query('COMMIT');
     res.json(orderResult.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: 'Failed to create order' });
+  } finally {
+    client.release();
   }
 });
 
 // Update order status
+const VALID_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    // BUG: No validation on status transitions - can go from 'delivered' back to 'pending'
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+    }
     const result = await pool.query(
       'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
       [status, req.params.id]
@@ -106,6 +110,55 @@ router.patch('/:id/status', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update order status' });
+  }
+});
+
+// Cancel order — only allowed for 'pending' or 'confirmed' orders.
+// Atomically sets status to 'cancelled' and restores product inventory.
+const CANCELLABLE_STATUSES = ['pending', 'confirmed'];
+router.patch('/:id/cancel', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Lock the order row to prevent concurrent cancellations
+    const orderResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (!CANCELLABLE_STATUSES.includes(order.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Order cannot be cancelled. Only pending or confirmed orders can be cancelled. Current status: ${order.status}`,
+      });
+    }
+
+    // Set order status to 'cancelled'
+    const updatedOrder = await client.query(
+      'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      ['cancelled', req.params.id]
+    );
+
+    // Restore product inventory
+    await client.query(
+      'UPDATE products SET inventory_count = inventory_count + $1 WHERE id = $2',
+      [order.quantity, order.product_id]
+    );
+
+    await client.query('COMMIT');
+    res.json(updatedOrder.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Failed to cancel order' });
+  } finally {
+    client.release();
   }
 });
 
