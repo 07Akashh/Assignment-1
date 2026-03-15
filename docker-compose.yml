@@ -1,8 +1,6 @@
-version: '3'
-
 services:
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
@@ -12,6 +10,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d orderdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
@@ -19,8 +22,15 @@ services:
       - "3001:3001"
     environment:
       PORT: 3001
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: orderdb
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    restart: on-failure
 
   frontend:
     build: ./frontend
