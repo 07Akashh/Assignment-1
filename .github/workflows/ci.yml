@@ -1,6 +1,8 @@
 name: CI Pipeline
 
 on:
+  push:
+    branches: [main, master, solution/kartavya]
   pull_request:
     branches: [main, master]
 
