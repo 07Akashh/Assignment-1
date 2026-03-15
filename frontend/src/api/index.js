@@ -47,6 +47,14 @@ export async function createCustomer(data) {
   return res.json();
 }
 
+export async function cancelOrder(id) {
+  const res = await fetch(`${API_BASE}/orders/${id}/cancel`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return res.json();
+}
+
 export async function fetchProducts() {
   const res = await fetch(`${API_BASE}/products`);
   return res.json();

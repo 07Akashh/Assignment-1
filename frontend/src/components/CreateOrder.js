@@ -24,7 +24,7 @@ function CreateOrder() {
       const product = products.find(p => p.id === parseInt(selectedProduct));
       setSelectedProductData(product);
     }
-  }, [products]); // Missing: selectedProduct
+  }, [products, selectedProduct]); // fixed: added selectedProduct dependency
 
   const handleSubmit = async () => {
     if (!selectedCustomer || !selectedProduct || !address) {
