@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy package files first for better layer caching
 # (deps only reinstall when package.json changes, not on every code change)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy source code
 COPY src ./src
