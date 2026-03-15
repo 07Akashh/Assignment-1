@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
        ORDER BY o.created_at DESC`
     );
     res.json(result.rows);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -35,7 +35,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
     res.json(result.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 });
@@ -76,7 +76,7 @@ router.post('/', async (req, res) => {
 
     await client.query('COMMIT');
     res.json(orderResult.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
@@ -96,7 +96,7 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
     res.json(result.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to update order status' });
   }
 });
@@ -135,7 +135,7 @@ router.post('/:id/cancel', async (req, res) => {
       [orderId]
     );
     res.json(updated.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: 'Failed to cancel order' });
   } finally {

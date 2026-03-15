@@ -21,7 +21,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Global error handler: log error and return correct status + body
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error(err);
   const status = err.status ?? err.statusCode ?? 500;
   res.status(status).json({

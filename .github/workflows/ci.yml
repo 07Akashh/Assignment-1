@@ -1,0 +1,42 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd backend
+          npm run lint
+
+      - name: Build and start Docker containers
+        run: docker compose up -d --build
+
+      - name: Wait for backend to start
+        run: sleep 15
+
+      - name: Health check API
+        run: |
+          curl -f http://localhost:3001/api/health || exit 1
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down
