@@ -142,6 +142,20 @@ body {
   background: #c73a52;
 }
 
+.cancel-btn {
+  background: transparent;
+  color: #c73a52;
+  border: 1px solid #c73a52;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.cancel-btn:hover {
+  background: #ffe5e9;
+}
+
 /* Customer Search */
 .customer-search {
   background: white;

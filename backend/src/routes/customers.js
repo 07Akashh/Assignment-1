@@ -7,20 +7,24 @@ router.get('/', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM customers ORDER BY created_at DESC');
     res.json(result.rows);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to fetch customers' });
   }
 });
 
-// Search customers by name
-// BUG: SQL injection - uses string concatenation instead of parameterized query
+// Search customers by name (parameterized query to prevent SQL injection)
 router.get('/search', async (req, res) => {
   try {
     const { name } = req.query;
-    const query = "SELECT * FROM customers WHERE name ILIKE '%" + name + "%'";
-    const result = await pool.query(query);
+    if (name == null || String(name).trim() === '') {
+      return res.status(400).json({ error: 'Search term required' });
+    }
+    const result = await pool.query(
+      'SELECT * FROM customers WHERE name ILIKE $1',
+      ['%' + String(name).trim() + '%']
+    );
     res.json(result.rows);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -33,7 +37,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
     res.json(result.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to fetch customer' });
   }
 });
@@ -47,7 +51,7 @@ router.post('/', async (req, res) => {
       [name, email, phone]
     );
     res.json(result.rows[0]);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to create customer' });
   }
 });

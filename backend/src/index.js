@@ -20,10 +20,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// BUG: Global error handler that swallows errors and always returns 200
-app.use((err, req, res, next) => {
-  console.log('Something happened');
-  res.status(200).json({ success: true });
+// Global error handler: log error and return correct status + body
+app.use((err, req, res, _next) => {
+  console.error(err);
+  const status = err.status ?? err.statusCode ?? 500;
+  res.status(status).json({
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
+  });
 });
 
 app.listen(PORT, () => {
