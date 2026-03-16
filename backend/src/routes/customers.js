@@ -12,13 +12,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Search customers by name
-// BUG: SQL injection - uses string concatenation instead of parameterized query
+// Search customers by name - Fixed: Uses parameterized query to prevent SQL injection
 router.get('/search', async (req, res) => {
   try {
     const { name } = req.query;
-    const query = "SELECT * FROM customers WHERE name ILIKE '%" + name + "%'";
-    const result = await pool.query(query);
+    const query = "SELECT * FROM customers WHERE name ILIKE $1";
+    const result = await pool.query(query, [`%${name}%`]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Search failed' });
@@ -38,16 +37,27 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create customer - BUG: no input validation at all
+// Create customer
 router.post('/', async (req, res) => {
   try {
     const { name, email, phone } = req.body;
+    
+    // Basic validation
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
+    
+    if (!email.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
     const result = await pool.query(
       'INSERT INTO customers (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
       [name, email, phone]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to create customer' });
   }
 });
