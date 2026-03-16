@@ -23,8 +23,10 @@ function CreateOrder() {
     if (selectedProduct) {
       const product = products.find(p => p.id === parseInt(selectedProduct));
       setSelectedProductData(product);
+    } else {
+      setSelectedProductData(null);
     }
-  }, [products]); // Missing: selectedProduct
+  }, [products, selectedProduct]);
 
   const handleSubmit = async () => {
     if (!selectedCustomer || !selectedProduct || !address) {
