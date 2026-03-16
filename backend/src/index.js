@@ -1,3 +1,4 @@
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const customerRoutes = require('./routes/customers');
@@ -32,10 +33,22 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// BUG: Global error handler that swallows errors and always returns 200
 app.use((err, req, res, next) => {
-  console.log('Something happened');
-  res.status(200).json({ success: true });
+  const status = err.status || err.statusCode || 500;
+
+  console.error({
+    message: err.message,
+    stack: err.stack,
+    method: req.method,
+    path: req.path,
+    status,
+  });
+
+  res.status(status).json({
+    error: process.env.NODE_ENV === 'production'
+      ? (http.STATUS_CODES[status] || 'Internal Server Error')
+      : err.message,
+  });
 });
 
 app.listen(PORT, () => {
