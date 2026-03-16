@@ -1,0 +1,46 @@
+databases:
+  - name: orderdb
+    databaseName: orderdb
+    user: admin
+    plan: free
+    region: oregon
+
+services:
+  # 1. Backend Service
+  - type: web
+    name: order-management-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: .
+    dockerfilePath: backend/Dockerfile
+    # Init DB + Start App
+    dockerCommand: node src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orderdb
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+
+  # 2. Frontend Service
+  - type: web
+    name: order-management-ui
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: .
+    dockerfilePath: frontend/Dockerfile
+
+    envVars:
+      - key: REACT_APP_API_URL
+        # On Render, we'll try to use the actual backend URL if known
+        # or use a placeholder that the user must update or Render handles.
+        # For simplicity, we set it here but user should check if 'order-management-api' service name is sufficient.
+        value: https://order-management-api-gbtd.onrender.com/api
+
+

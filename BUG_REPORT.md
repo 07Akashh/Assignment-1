@@ -44,7 +44,7 @@ This document outlines the bugs, security vulnerabilities, and architectural iss
 ## 7. Stale Closures and Missing Dependencies in Hooks
 
 - **Location**: `frontend/src/components/OrderList.js`, `frontend/src/components/CreateOrder.js`
-- **Impact**: **Medium (Correctness)**. Missing dependencies in `useEffect` caused the UI to show stale data (e.g., wrong product price) when state changed.
+- **Impact**: **Medium (Correctness)**. UI to show stale data (e.g., wrong product price) when state changed.
 - **Fix**: Refactor state derivation to be reactive or include all necessary dependencies in hooks.
 
 ## 8. Excessive API Calls (Lack of Debounce)

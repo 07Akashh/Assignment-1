@@ -1,0 +1,84 @@
+name: Production Grade CI
+
+on:
+  push:
+    branches: [ master, solution/rahulk ]
+  pull_request:
+    branches: [ solution/rahulk ]
+  workflow_dispatch:
+
+
+jobs:
+  backend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies (Backend)
+        working-directory: backend
+        run: npm ci
+
+      - name: Run Lint (Backend)
+        working-directory: backend
+        run: npm run lint
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies (Frontend)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Lint (Frontend)
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+  health-check:
+    runs-on: ubuntu-latest
+    needs: [backend-checks, frontend-checks]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Services
+        run: docker compose up -d --build
+
+      - name: Check Container Status
+        run: docker compose ps
+
+      - name: Make health-check script executable
+        run: chmod +x scripts/health-check.sh
+
+      - name: Wait for services and run Health Check
+        run: ./scripts/health-check.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Shutdown Services
+        if: always()
+        run: docker compose down
+
