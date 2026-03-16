@@ -10,6 +10,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build"
+    
   },
   "proxy": "http://backend:3001",
   "browserslist": {
