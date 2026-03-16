@@ -3,29 +3,19 @@ const router = express.Router();
 const pool = require('../config/db');
 
 // Get all orders
-// BUG: N+1 query - fetches customer and product names in a loop
 router.get('/', async (req, res) => {
   try {
-    const ordersResult = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    const orders = ordersResult.rows;
-
-    // Fetch customer and product details for each order individually
-    const enrichedOrders = [];
-    for (const order of orders) {
-      const customerResult = await pool.query('SELECT name, email FROM customers WHERE id = $1', [order.customer_id]);
-      const productResult = await pool.query('SELECT name, price FROM products WHERE id = $1', [order.product_id]);
-
-      enrichedOrders.push({
-        ...order,
-        customer_name: customerResult.rows[0]?.name || 'Unknown',
-        customer_email: customerResult.rows[0]?.email || '',
-        product_name: productResult.rows[0]?.name || 'Unknown',
-        product_price: productResult.rows[0]?.price || 0,
-      });
-    }
-
-    res.json(enrichedOrders);
+    const ordersResult = await pool.query(
+      `SELECT o.*, c.name as customer_name, c.email as customer_email,
+              p.name as product_name, p.price as product_price
+       FROM orders o
+       LEFT JOIN customers c ON o.customer_id = c.id
+       LEFT JOIN products p ON o.product_id = p.id
+       ORDER BY o.created_at DESC`
+    );
+    res.json(ordersResult.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
