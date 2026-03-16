@@ -8,19 +8,25 @@ router.get('/', async (req, res) => {
     const result = await pool.query('SELECT * FROM customers ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to fetch customers' });
   }
 });
 
 // Search customers by name
-// BUG: SQL injection - uses string concatenation instead of parameterized query
 router.get('/search', async (req, res) => {
   try {
-    const { name } = req.query;
-    const query = "SELECT * FROM customers WHERE name ILIKE '%" + name + "%'";
-    const result = await pool.query(query);
+    const name = String(req.query.name || '').trim();
+    if (!name) {
+      return res.json([]);
+    }
+    const result = await pool.query(
+      'SELECT * FROM customers WHERE name ILIKE $1 ORDER BY created_at DESC',
+      [`%${name}%`]
+    );
     res.json(result.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -34,20 +40,25 @@ router.get('/:id', async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to fetch customer' });
   }
 });
 
-// Create customer - BUG: no input validation at all
+// Create customer
 router.post('/', async (req, res) => {
   try {
     const { name, email, phone } = req.body;
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
     const result = await pool.query(
       'INSERT INTO customers (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
       [name, email, phone]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to create customer' });
   }
 });
