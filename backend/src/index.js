@@ -7,7 +7,19 @@ const orderRoutes = require('./routes/orders');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map(o => o.trim());
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(Object.assign(new Error('Not allowed by CORS'), { status: 403 }));
+    }
+  },
+}));
 app.use(express.json());
 
 // Routes
