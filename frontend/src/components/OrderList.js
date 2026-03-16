@@ -1,22 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { fetchOrders, updateOrderStatus } from '../api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(0);
+  const limit = 10; // Items per page
 
-  // BUG: No loading state, no error handling - shows blank screen if API fails
+  const loadOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchOrders(limit, page * limit);
+      if (data.error) throw new Error(data.error);
+      setOrders(data);
+      setError(null);
+    } catch (err) {
+      setError(
+        "Failed to fetch orders. Please check if the backend is running.",
+      );
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, limit]);
+
   useEffect(() => {
-    fetchOrders().then(data => setOrders(data));
-  }, []);
+    loadOrders();
+  }, [loadOrders]);
 
   const handleStatusChange = async (orderId, newStatus) => {
-    await updateOrderStatus(orderId, newStatus);
-    // BUG: useEffect has missing dependency - this manual refetch is a workaround
-    // but the stale closure over sortField/sortDir means sorting resets
-    const data = await fetchOrders();
-    setOrders(data);
+    try {
+      const result = await updateOrderStatus(orderId, newStatus);
+      if (result.error) throw new Error(result.error);
+      await loadOrders();
+    } catch (err) {
+      alert(err.message || "Failed to update status");
+    }
+  };
+
+  const handleCancel = async (orderId) => {
+    if (window.confirm('Are you sure you want to cancel this order?')) {
+      try {
+        const result = await cancelOrder(orderId);
+        if (result.error) throw new Error(result.error);
+        await loadOrders();
+      } catch (err) {
+        alert(err.message || 'Failed to cancel order');
+      }
+    }
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -41,6 +75,9 @@ function OrderList() {
 
   const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered'];
 
+  if (loading) return <div className="loader">Loading orders...</div>;
+  if (error) return <div className="message error">{error}</div>;
+
   return (
     <div className="order-list">
       <h2>Orders ({orders.length})</h2>
@@ -54,12 +91,12 @@ function OrderList() {
             <th onClick={() => handleSort('total_amount')} style={{ cursor: 'pointer' }}>Total</th>
             <th>Status</th>
             <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {/* BUG: Using array index as key on a sortable list */}
-          {sortedOrders.map((order, index) => (
-            <tr key={index}>
+          {sortedOrders.map((order) => (
+            <tr key={order.id}>
               <td>#{order.id}</td>
               <td>
                 <div>{order.customer_name}</div>
@@ -69,21 +106,66 @@ function OrderList() {
               <td>{order.quantity}</td>
               <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
               <td>
-                <select
-                  className="status-select"
-                  value={order.status}
-                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <span className={`status-badge ${order.status}`}>
+                  {order.status}
+                </span>
+                {order.status !== 'cancelled' &&
+                  order.status !== 'delivered' && (
+                    <select
+                      className="status-select"
+                      value={order.status}
+                      onChange={(e) =>
+                        handleStatusChange(order.id, e.target.value)
+                      }
+                      style={{ marginLeft: '10px' }}
+                    >
+                      <option value={order.status} disabled>
+                        Move to...
+                      </option>
+                      {statusOptions
+                        .slice(statusOptions.indexOf(order.status) + 1)
+                        .map((s) => (
+                          <option key={s} value={s}>
+                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                          </option>
+                        ))}
+                    </select>
+                  )}
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
+              <td>
+                {(order.status === 'pending' ||
+                  order.status === 'confirmed') && (
+                  <button
+                    onClick={() => handleCancel(order.id)}
+                    className="cancel-btn"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      <div className="pagination">
+        <button 
+          disabled={page === 0} 
+          onClick={() => setPage(p => p - 1)}
+          className="pagination-btn"
+        >
+          Previous
+        </button>
+        <span className="page-info">Page {page + 1}</span>
+        <button 
+          disabled={orders.length < limit} 
+          onClick={() => setPage(p => p + 1)}
+          className="pagination-btn"
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 }

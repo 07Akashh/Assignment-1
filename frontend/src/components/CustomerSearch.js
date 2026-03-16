@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
 
 function CustomerSearch() {
@@ -10,37 +10,66 @@ function CustomerSearch() {
   const [newPhone, setNewPhone] = useState('');
   const [message, setMessage] = useState(null);
 
-  // BUG: No debounce - fires API call on every keystroke
-  // BUG: No loading state, no error handling - blank results if API fails
-  const handleSearch = async (value) => {
-    setQuery(value);
-    if (value.length > 0) {
-      const data = await searchCustomers(value);
-      setResults(data);
-    } else {
-      setResults([]);
-    }
-  };
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Optimized: Debounced search effect
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (query.trim()) {
+        try {
+          setLoading(true);
+          setError(null);
+          const data = await searchCustomers(query);
+          if (data.error) throw new Error(data.error);
+          setResults(data);
+        } catch (err) {
+          setError('Search failed');
+          setResults([]);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setResults([]);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query]);
 
   const handleAddCustomer = async () => {
-    // BUG: No client-side validation either - sends empty strings to the
-    // backend which also has no validation
-    const result = await createCustomer({
-      name: newName,
-      email: newEmail,
-      phone: newPhone,
-    });
+    if (!newName || !newEmail) {
+      setMessage({ type: 'error', text: 'Name and email are required' });
+      return;
+    }
 
-    if (result.error) {
-      setMessage({ type: 'error', text: result.error });
-    } else {
-      setMessage({ type: 'success', text: `Customer "${result.name}" added!` });
-      setNewName('');
-      setNewEmail('');
-      setNewPhone('');
-      setShowAdd(false);
-      // Refresh search
-      if (query) handleSearch(query);
+    if (!newEmail.includes('@')) {
+      setMessage({ type: 'error', text: 'Please enter a valid email' });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const result = await createCustomer({
+        name: newName,
+        email: newEmail,
+        phone: newPhone,
+      });
+
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error });
+      } else {
+        setMessage({ type: 'success', text: `Customer "${result.name}" added!` });
+        setNewName('');
+        setNewEmail('');
+        setNewPhone('');
+        setShowAdd(false);
+        // Search will automatically re-run due to the effect if query matches
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to add customer' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,8 +86,11 @@ function CustomerSearch() {
         type="text"
         placeholder="Search customers by name..."
         value={query}
-        onChange={(e) => handleSearch(e.target.value)}
+        onChange={(e) => setQuery(e.target.value)}
       />
+
+      {loading && <div style={{ marginBottom: '1rem', color: '#666' }}>Searching...</div>}
+      {error && <div className="message error">{error}</div>}
 
       <div style={{ marginBottom: '1rem' }}>
         <button
@@ -89,14 +121,14 @@ function CustomerSearch() {
       )}
 
       {results.length > 0 ? (
-        results.map((customer, idx) => (
-          <div className="customer-card" key={idx}>
+        results.map((customer) => (
+          <div className="customer-card" key={customer.id}>
             <h3>{customer.name}</h3>
             <p>{customer.email} • {customer.phone}</p>
           </div>
         ))
       ) : (
-        query.length > 0 && <p style={{ color: '#999' }}>No customers found.</p>
+        query.length > 0 && !loading && <p style={{ color: '#999' }}>No customers found.</p>
       )}
     </div>
   );
