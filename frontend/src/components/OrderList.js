@@ -124,7 +124,7 @@ function OrderList() {
               </td>
               <td>{order.product_name}</td>
               <td>{order.quantity}</td>
-              <td>â‚¹{parseFloat(order.total_amount).toLocaleString()}</td>
+              <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
               <td>
                 {order.status === 'cancelled' ? (
                   <span className="status-badge status-cancelled">cancelled</span>
