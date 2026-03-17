@@ -87,12 +87,37 @@ body {
 .status-confirmed { background: #cce5ff; color: #004085; }
 .status-shipped { background: #d4edda; color: #155724; }
 .status-delivered { background: #d1ecf1; color: #0c5460; }
+.status-cancelled { background: #f8d7da; color: #721c24; }
 
 .status-select {
   padding: 0.25rem;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 0.85rem;
+}
+
+.cancel-btn {
+  background: #f0f0f0;
+  color: #333;
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.cancel-btn:hover {
+  background: #e7e7e7;
+}
+
+.cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.muted {
+  color: #777;
+  font-size: 0.9rem;
 }
 
 /* Create Order Form */

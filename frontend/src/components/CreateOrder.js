@@ -16,15 +16,16 @@ function CreateOrder() {
     fetchProducts().then(setProducts);
   }, []);
 
-  // BUG: Missing dependency - selectedProduct is used inside but not in dep array.
-  // This means `selectedProductData` shows stale info when user changes product selection.
+  // Keep derived product info in sync with current selection.
   const [selectedProductData, setSelectedProductData] = useState(null);
   useEffect(() => {
     if (selectedProduct) {
       const product = products.find(p => p.id === parseInt(selectedProduct));
       setSelectedProductData(product);
+    } else {
+      setSelectedProductData(null);
     }
-  }, [products]); // Missing: selectedProduct
+  }, [products, selectedProduct]);
 
   const handleSubmit = async () => {
     if (!selectedCustomer || !selectedProduct || !address) {
@@ -81,7 +82,7 @@ function CreateOrder() {
 
       {selectedProductData && (
         <div style={{ padding: '0.5rem', background: '#f0f0f0', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.9rem' }}>
-          Selected: <strong>{selectedProductData.name}</strong> — ₹{selectedProductData.price} × {quantity} = ₹{(selectedProductData.price * quantity).toLocaleString()}
+          Selected: <strong>{selectedProductData.name}</strong> - ₹{selectedProductData.price} x {quantity} = ₹{(selectedProductData.price * quantity).toLocaleString()}
           <br />
           <small>Available: {selectedProductData.inventory_count} units</small>
         </div>
