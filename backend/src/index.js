@@ -46,7 +46,7 @@ app.use((err, req, res, next) => {
 
   res.status(status).json({
     error: process.env.NODE_ENV === 'production'
-      ? (http.STATUS_CODES[status] || 'Internal Server Error')
+      ? (err.isOperational ? err.message : (http.STATUS_CODES[status] || 'Internal Server Error'))
       : err.message,
   });
 });

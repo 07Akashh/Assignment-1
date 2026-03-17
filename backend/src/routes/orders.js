@@ -53,10 +53,25 @@ router.get('/:id', async (req, res) => {
 
 // Create order
 router.post('/', async (req, res, next) => {
+  const { customer_id, product_id, quantity, shipping_address } = req.body;
+
+  const missing = ['customer_id', 'product_id', 'quantity', 'shipping_address']
+    .filter(f => req.body[f] == null);
+  if (missing.length) {
+    const err = new Error(`Missing required fields: ${missing.join(', ')}`);
+    err.status = 400;
+    err.isOperational = true;
+    return next(err);
+  }
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    const err = new Error('quantity must be a positive integer');
+    err.status = 400;
+    err.isOperational = true;
+    return next(err);
+  }
+
   const client = await pool.connect();
   try {
-    const { customer_id, product_id, quantity, shipping_address } = req.body;
-
     await client.query('BEGIN');
 
     // Lock the product row so concurrent requests queue here
