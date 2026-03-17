@@ -52,42 +52,54 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create order
-// BUG: Race condition - read inventory, then decrement separately. Two concurrent
-// requests can both read inventory=1, both pass the check, and both decrement.
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { customer_id, product_id, quantity, shipping_address } = req.body;
 
-    // Check inventory
-    const productResult = await pool.query('SELECT * FROM products WHERE id = $1', [product_id]);
+    await client.query('BEGIN');
+
+    // Lock the product row so concurrent requests queue here
+    const productResult = await client.query(
+      'SELECT * FROM products WHERE id = $1 FOR UPDATE',
+      [product_id]
+    );
     if (productResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Product not found' });
+      const err = new Error('Product not found');
+      err.status = 404;
+      err.isOperational = true;
+      throw err;
     }
 
     const product = productResult.rows[0];
 
     if (product.inventory_count < quantity) {
-      return res.status(400).json({ error: 'Insufficient inventory' });
+      const err = new Error(`Insufficient inventory — only ${product.inventory_count} unit(s) available`);
+      err.status = 400;
+      err.isOperational = true;
+      throw err;
     }
 
     const total_amount = product.price * quantity;
 
-    // Create order
-    const orderResult = await pool.query(
+    const orderResult = await client.query(
       `INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
        VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
       [customer_id, product_id, quantity, total_amount, shipping_address]
     );
 
-    // Decrement inventory
-    await pool.query(
+    await client.query(
       'UPDATE products SET inventory_count = inventory_count - $1 WHERE id = $2',
       [quantity, product_id]
     );
 
-    res.json(orderResult.rows[0]);
+    await client.query('COMMIT');
+    res.status(201).json(orderResult.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create order' });
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
