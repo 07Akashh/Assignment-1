@@ -1,15 +1,19 @@
 const express = require('express');
-const router = express.Router();
-const pool = require('../config/db');
-const { writeLimiter } = require('../middleware/limiters');
+const router  = express.Router();
+const pool    = require('../config/db');
+const { writeLimiter }      = require('../middleware/limiters');
+const { operationalError }  = require('../utils/errors');
+const { PAGE_LIMIT }        = require('../config/env');
+const {
+  VALID_STATUSES,
+  ALLOWED_TRANSITIONS,
+  ALLOWED_TRANSITIONS_REVERSE,
+} = require('../constants/orders');
 
-const PAGE_LIMIT = parseInt(process.env.PAGE_LIMIT || '50');
-
-// Get all orders
 router.get('/', async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || PAGE_LIMIT, 100);
-    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const limit  = Math.min(parseInt(req.query.limit) || PAGE_LIMIT, 100);
+    const page   = Math.max(parseInt(req.query.page)  || 1, 1);
     const offset = (page - 1) * limit;
 
     const [dataResult, countResult] = await Promise.all([
@@ -39,73 +43,53 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Get single order
 router.get('/:id', async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT o.*, c.name as customer_name, c.email as customer_email,
-              p.name as product_name
+      `SELECT o.*, c.name AS customer_name, c.email AS customer_email, p.name AS product_name
        FROM orders o
        JOIN customers c ON o.customer_id = c.id
-       JOIN products p ON o.product_id = p.id
+       JOIN products  p ON o.product_id  = p.id
        WHERE o.id = $1`,
       [req.params.id]
     );
-    if (result.rows.length === 0) {
-      const err = new Error('Order not found');
-      err.status = 404; err.isOperational = true;
-      return next(err);
-    }
+    if (result.rows.length === 0) return next(operationalError(404, 'Order not found'));
     res.json({ data: result.rows[0] });
   } catch (err) {
     next(err);
   }
 });
 
-// Create order
 router.post('/', writeLimiter, async (req, res, next) => {
   const { customer_id, product_id, quantity, shipping_address } = req.body;
 
   const errors = [];
-  if (customer_id == null || !Number.isInteger(customer_id) || customer_id < 1) {
+  if (customer_id == null || !Number.isInteger(customer_id) || customer_id < 1)
     errors.push('customer_id must be a positive integer');
-  }
-  if (product_id == null || !Number.isInteger(product_id) || product_id < 1) {
+  if (product_id == null || !Number.isInteger(product_id) || product_id < 1)
     errors.push('product_id must be a positive integer');
-  }
-  if (quantity == null || !Number.isInteger(quantity) || quantity < 1) {
+  if (quantity == null || !Number.isInteger(quantity) || quantity < 1)
     errors.push('quantity must be a positive integer');
-  }
-  if (!shipping_address || typeof shipping_address !== 'string' || !shipping_address.trim()) {
+  if (!shipping_address || typeof shipping_address !== 'string' || !shipping_address.trim())
     errors.push('shipping_address is required and must be a non-empty string');
-  }
-  if (errors.length) {
-    const err = new Error(errors.join('; '));
-    err.status = 400;
-    err.isOperational = true;
-    return next(err);
-  }
+  if (errors.length) return next(operationalError(400, errors.join('; ')));
 
   try {
     const result = await pool.query(
       `WITH reserved AS (
          UPDATE products
          SET    inventory_count = inventory_count - $1
-         WHERE  id = $2
-           AND  inventory_count >= $1
-         RETURNING id, price, inventory_count AS remaining
+         WHERE  id = $2 AND inventory_count >= $1
+         RETURNING id, price
        ),
-       product_exists AS (
-         SELECT id FROM products WHERE id = $2
-       ),
+       product_exists AS (SELECT id FROM products WHERE id = $2),
        new_order AS (
          INSERT INTO orders (customer_id, product_id, quantity, unit_price, total_amount, shipping_address, status)
          SELECT $3, $2, $1, r.price, r.price * $1, $4, 'pending'
          FROM   reserved r
          RETURNING *
        )
-       SELECT
-         o.*,
+       SELECT o.*,
          CASE
            WHEN NOT EXISTS (SELECT 1 FROM product_exists) THEN 'not_found'
            WHEN NOT EXISTS (SELECT 1 FROM reserved)       THEN 'insufficient'
@@ -117,16 +101,8 @@ router.post('/', writeLimiter, async (req, res, next) => {
 
     if (result.rows.length === 0) {
       const row = await pool.query('SELECT inventory_count FROM products WHERE id = $1', [product_id]);
-      if (row.rows.length === 0) {
-        const err = new Error('Product not found');
-        err.status = 404;
-        err.isOperational = true;
-        return next(err);
-      }
-      const err = new Error(`Insufficient inventory — only ${row.rows[0].inventory_count} unit(s) available`);
-      err.status = 400;
-      err.isOperational = true;
-      return next(err);
+      if (row.rows.length === 0) return next(operationalError(404, 'Product not found'));
+      return next(operationalError(400, `Insufficient inventory — only ${row.rows[0].inventory_count} unit(s) available`));
     }
 
     const { _result, ...order } = result.rows[0];
@@ -136,74 +112,31 @@ router.post('/', writeLimiter, async (req, res, next) => {
   }
 });
 
-const VALID_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
-
-const ALLOWED_TRANSITIONS = {
-  pending:   ['confirmed', 'cancelled'],
-  confirmed: ['shipped',   'cancelled'],
-  shipped:   ['delivered'],
-  delivered: [],
-  cancelled: [],
-};
-
-// Derived reverse map: target status → array of valid prior statuses
-const ALLOWED_TRANSITIONS_REVERSE = Object.entries(ALLOWED_TRANSITIONS).reduce((acc, [from, tos]) => {
-  tos.forEach(to => {
-    if (!acc[to]) acc[to] = [];
-    acc[to].push(from);
-  });
-  return acc;
-}, {});
-
-// Update order status
 router.patch('/:id/status', writeLimiter, async (req, res, next) => {
   try {
     const { status } = req.body;
 
-    if (!status) {
-      const err = new Error('status is required');
-      err.status = 400;
-      err.isOperational = true;
-      return next(err);
-    }
-
-    if (!VALID_STATUSES.includes(status)) {
-      const err = new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
-      err.status = 400;
-      err.isOperational = true;
-      return next(err);
-    }
+    if (!status)
+      return next(operationalError(400, 'status is required'));
+    if (!VALID_STATUSES.includes(status))
+      return next(operationalError(400, `Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`));
 
     const validPriorStatuses = ALLOWED_TRANSITIONS_REVERSE[status];
-    if (!validPriorStatuses) {
-      const err = new Error(`"${status}" is not reachable from any state`);
-      err.status = 422;
-      err.isOperational = true;
-      return next(err);
-    }
+    if (!validPriorStatuses)
+      return next(operationalError(422, `"${status}" is not reachable from any state`));
 
-    // Single atomic query: update only if current status is a valid predecessor
     const result = await pool.query(
       'UPDATE orders SET status = $1 WHERE id = $2 AND status = ANY($3) RETURNING *',
       [status, req.params.id, validPriorStatuses]
     );
 
     if (result.rows.length === 0) {
-      // Distinguish "not found" from "invalid transition"
       const check = await pool.query('SELECT status FROM orders WHERE id = $1', [req.params.id]);
-      if (check.rows.length === 0) {
-        const err = new Error('Order not found');
-        err.status = 404;
-        err.isOperational = true;
-        return next(err);
-      }
-      const err = new Error(
+      if (check.rows.length === 0) return next(operationalError(404, 'Order not found'));
+      return next(operationalError(422,
         `Cannot transition order from "${check.rows[0].status}" to "${status}". ` +
         `Allowed: ${ALLOWED_TRANSITIONS[check.rows[0].status].join(', ') || 'none'}`
-      );
-      err.status = 422;
-      err.isOperational = true;
-      return next(err);
+      ));
     }
 
     res.json({ data: result.rows[0] });
@@ -212,18 +145,13 @@ router.patch('/:id/status', writeLimiter, async (req, res, next) => {
   }
 });
 
-// Cancel order — atomically marks cancelled and restores inventory
 router.post('/:id/cancel', writeLimiter, async (req, res, next) => {
   try {
-    // Single CTE: cancel the order and restore inventory in one round trip.
-    // The inventory UPDATE only runs if the order row was actually updated
-    // (FROM cancelled with 0 rows → 0 product rows matched → no inventory change).
     const result = await pool.query(
       `WITH cancelled AS (
          UPDATE orders
          SET    status = 'cancelled'
-         WHERE  id = $1
-           AND  status = ANY(ARRAY['pending', 'confirmed'])
+         WHERE  id = $1 AND status = ANY(ARRAY['pending', 'confirmed'])
          RETURNING *
        ),
        _restored AS (
@@ -237,25 +165,14 @@ router.post('/:id/cancel', writeLimiter, async (req, res, next) => {
     );
 
     if (result.rows.length === 0) {
-      // Distinguish "not found" from "wrong status"
-      const check = await pool.query(
-        'SELECT status FROM orders WHERE id = $1',
-        [req.params.id]
-      );
-      if (check.rows.length === 0) {
-        const err = new Error('Order not found');
-        err.status = 404; err.isOperational = true;
-        return next(err);
-      }
+      const check = await pool.query('SELECT status FROM orders WHERE id = $1', [req.params.id]);
+      if (check.rows.length === 0) return next(operationalError(404, 'Order not found'));
       const current = check.rows[0].status;
-      const err = new Error(
+      return next(operationalError(422,
         current === 'cancelled'
           ? 'Order is already cancelled'
-          : `Order cannot be cancelled — current status is "${current}". ` +
-            `Only pending or confirmed orders may be cancelled.`
-      );
-      err.status = 422; err.isOperational = true;
-      return next(err);
+          : `Order cannot be cancelled — current status is "${current}". Only pending or confirmed orders may be cancelled.`
+      ));
     }
 
     res.json({ data: result.rows[0] });

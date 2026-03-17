@@ -1,36 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
 import CancelOrderDialog from './CancelOrderDialog';
+import { ALLOWED_TRANSITIONS, CANCELLABLE_STATUSES } from '../constants/orders';
 
 const PAGE_LIMIT = parseInt(process.env.REACT_APP_PAGE_LIMIT || '50');
 
-// Must stay in sync with ALLOWED_TRANSITIONS in backend/src/routes/orders.js.
-// 'cancelled' is intentionally absent from every list — cancellation goes
-// through the Cancel button which also restores inventory.
-const ALLOWED_TRANSITIONS = {
-  pending:   ['confirmed'],
-  confirmed: ['shipped'],
-  shipped:   ['delivered'],
-  delivered: [],
-  cancelled: [],
-};
-
-// Orders in these statuses are eligible for cancellation.
-const CANCELLABLE_STATUSES = new Set(['pending', 'confirmed']);
-
 function OrderList() {
-  const [orders, setOrders]               = useState([]);
-  const [total, setTotal]                 = useState(0);
-  const [page, setPage]                   = useState(1);
-  const [sortField, setSortField]         = useState('created_at');
-  const [sortDir, setSortDir]             = useState('desc');
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState(null);
+  const [orders, setOrders]   = useState([]);
+  const [total, setTotal]     = useState(0);
+  const [page, setPage]       = useState(1);
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDir, setSortDir]     = useState('desc');
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
 
-  // Cancel flow state
-  const [cancelDialogOrder, setCancelDialogOrder] = useState(null); // order shown in dialog
-  const [cancellingId, setCancellingId]           = useState(null); // in-flight cancel request
-  const [cancelError, setCancelError]             = useState(null); // { id, message }
+  const [cancelDialogOrder, setCancelDialogOrder] = useState(null);
+  const [cancellingId, setCancellingId]           = useState(null);
+  const [cancelError, setCancelError]             = useState(null);
 
   const loadOrders = useCallback(async (p = page) => {
     setLoading(true);
@@ -47,9 +33,7 @@ function OrderList() {
     }
   }, [page]);
 
-  useEffect(() => {
-    loadOrders(page);
-  }, [page]); // loadOrders is stable within a page value; page change triggers reload via setPage
+  useEffect(() => { loadOrders(page); }, [page]); // eslint-disable-line
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -60,13 +44,9 @@ function OrderList() {
     }
   };
 
-  // Opens the confirmation dialog with the full order object
-  const handleCancelClick = (order) => {
-    setCancelError(null);
-    setCancelDialogOrder(order);
-  };
+  const handleCancelClick   = (order) => { setCancelError(null); setCancelDialogOrder(order); };
+  const handleCancelAbort   = ()      => setCancelDialogOrder(null);
 
-  // User confirmed in the dialog — call the dedicated cancel endpoint
   const handleCancelConfirm = async (orderId) => {
     setCancelDialogOrder(null);
     setCancellingId(orderId);
@@ -81,27 +61,15 @@ function OrderList() {
     }
   };
 
-  // User dismissed the dialog without confirming
-  const handleCancelAbort = () => setCancelDialogOrder(null);
-
   const sortedOrders = [...orders].sort((a, b) => {
-    let aVal = a[sortField];
-    let bVal = b[sortField];
-    if (sortField === 'total_amount') {
-      aVal = parseFloat(aVal);
-      bVal = parseFloat(bVal);
-    }
-    if (sortDir === 'asc') return aVal > bVal ? 1 : -1;
-    return aVal < bVal ? 1 : -1;
+    let aVal = sortField === 'total_amount' ? parseFloat(a[sortField]) : a[sortField];
+    let bVal = sortField === 'total_amount' ? parseFloat(b[sortField]) : b[sortField];
+    return sortDir === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
   });
 
   const handleSort = (field) => {
-    if (field === sortField) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDir('asc');
-    }
+    if (field === sortField) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
   };
 
   const totalPages = Math.ceil(total / PAGE_LIMIT);
@@ -127,61 +95,58 @@ function OrderList() {
           </tr>
         </thead>
         <tbody>
-          {sortedOrders.map((order) => (
-            <tr key={order.id}>
-              <td>#{order.id}</td>
-              <td>
-                <div>{order.customer_name}</div>
-                <small style={{ color: '#999' }}>{order.customer_email}</small>
-              </td>
-              <td>{order.product_name}</td>
-              <td>{order.quantity}</td>
-              <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
-              <td>
-                {(() => {
-                  const next = ALLOWED_TRANSITIONS[order.status] ?? [];
-                  if (next.length === 0) {
-                    return <span style={{ color: '#999' }}>{order.status}</span>;
-                  }
-                  return (
+          {sortedOrders.map((order) => {
+            const nextStatuses = ALLOWED_TRANSITIONS[order.status] ?? [];
+            return (
+              <tr key={order.id}>
+                <td>#{order.id}</td>
+                <td>
+                  <div>{order.customer_name}</div>
+                  <small style={{ color: '#999' }}>{order.customer_email}</small>
+                </td>
+                <td>{order.product_name}</td>
+                <td>{order.quantity}</td>
+                <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
+                <td>
+                  {nextStatuses.length === 0 ? (
+                    <span style={{ color: '#999' }}>{order.status}</span>
+                  ) : (
                     <select
                       className="status-select"
                       value={order.status}
                       onChange={(e) => handleStatusChange(order.id, e.target.value)}
                     >
                       <option value={order.status}>{order.status}</option>
-                      {next.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
+                      {nextStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
-                  );
-                })()}
-              </td>
-              <td>{new Date(order.created_at).toLocaleDateString()}</td>
-              <td>
-                {cancellingId === order.id ? (
-                  <small style={{ color: '#999' }}>Cancelling…</small>
-                ) : (
-                  <>
-                    {CANCELLABLE_STATUSES.has(order.status) && (
-                      <button
-                        className="btn-cancel-order"
-                        onClick={() => handleCancelClick(order)}
-                        disabled={cancellingId !== null}
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    {cancelError?.id === order.id && (
-                      <div style={{ color: '#c00', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                        {cancelError.message}
-                      </div>
-                    )}
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
+                  )}
+                </td>
+                <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                <td>
+                  {cancellingId === order.id ? (
+                    <small style={{ color: '#999' }}>Cancelling…</small>
+                  ) : (
+                    <>
+                      {CANCELLABLE_STATUSES.has(order.status) && (
+                        <button
+                          className="btn-cancel-order"
+                          onClick={() => handleCancelClick(order)}
+                          disabled={cancellingId !== null}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {cancelError?.id === order.id && (
+                        <div style={{ color: '#c00', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                          {cancelError.message}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -193,7 +158,6 @@ function OrderList() {
         </div>
       )}
 
-      {/* Rendered outside the table to avoid invalid DOM nesting */}
       <CancelOrderDialog
         order={cancelDialogOrder}
         onConfirm={handleCancelConfirm}

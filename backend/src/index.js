@@ -1,18 +1,17 @@
-const http = require('http');
+const http    = require('http');
 const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const morgan = require('morgan');
-const customerRoutes = require('./routes/customers');
-const productRoutes = require('./routes/products');
-const orderRoutes = require('./routes/orders');
+const helmet  = require('helmet');
+const cors    = require('cors');
+const morgan  = require('morgan');
+const pool    = require('./config/db');
+const { PORT }        = require('./config/env');
 const { readLimiter } = require('./middleware/limiters');
-const pool = require('./config/db');
+const customerRoutes  = require('./routes/customers');
+const productRoutes   = require('./routes/products');
+const orderRoutes     = require('./routes/orders');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// Security headers — must be first middleware
 app.use(helmet());
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
@@ -21,25 +20,18 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(Object.assign(new Error('Not allowed by CORS'), { status: 403 }));
-    }
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(Object.assign(new Error('Not allowed by CORS'), { status: 403 }));
   },
 }));
 
-// Request logging
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-
 app.use(express.json());
 
-// Routes — readLimiter applied globally; writeLimiter applied per handler in each route file
 app.use('/api/customers', readLimiter, customerRoutes);
-app.use('/api/products', readLimiter, productRoutes);
-app.use('/api/orders', readLimiter, orderRoutes);
+app.use('/api/products',  readLimiter, productRoutes);
+app.use('/api/orders',    readLimiter, orderRoutes);
 
-// Health check — verifies DB connectivity
 app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
@@ -49,17 +41,9 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   const status = err.status || err.statusCode || 500;
-
-  console.error({
-    message: err.message,
-    stack: err.stack,
-    method: req.method,
-    path: req.path,
-    status,
-  });
-
+  console.error({ message: err.message, stack: err.stack, method: req.method, path: req.path, status });
   res.status(status).json({
     error: process.env.NODE_ENV === 'production'
       ? (err.isOperational ? err.message : (http.STATUS_CODES[status] || 'Internal Server Error'))
@@ -67,12 +51,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Graceful shutdown on SIGTERM
 const server = http.createServer(app);
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 process.on('SIGTERM', () => {
   console.log('SIGTERM received — shutting down gracefully');
@@ -81,8 +62,6 @@ process.on('SIGTERM', () => {
     console.log('DB pool drained — process exiting');
     process.exit(0);
   });
-
-  // Force exit if shutdown takes too long
   setTimeout(() => {
     console.error('Graceful shutdown timed out — forcing exit');
     process.exit(1);

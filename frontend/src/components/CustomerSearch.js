@@ -1,18 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
-import { useAutoMessage } from '../hooks/useAutoMessage';
 import FlashMessage from './FlashMessage';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Valid name search: letters (basic + extended Latin for accented chars),
-// spaces, hyphens, apostrophes, periods — no digits or special characters.
-// Covers: "Aarav", "O'Brien", "Mary-Jane", "Dr. Smith", "José", "Müller"
+const EMAIL_RE      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_SEARCH_RE = /^[a-zA-Z\u00C0-\u024F\s'\-.]+$/;
-// Accepts digits, spaces, +, -, (, ) — must have 7–15 digits total (ITU E.164)
 const PHONE_DIGITS_RE = /\d/g;
 
-function validate({ name, email, phone }) {
+function validateCustomer({ name, email, phone }) {
   const errors = {};
   if (!name.trim())               errors.name  = 'Name is required.';
   if (!email.trim())              errors.email = 'Email is required.';
@@ -33,29 +27,25 @@ function CustomerSearch() {
   const [newName, setNewName]   = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [message, setMessage]   = useAutoMessage();
+  const [message, setMessage]   = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState({}); // per-field validation errors
+  const [submitting, setSubmitting]   = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const debounceTimer  = useRef(null);
-  const currentSearch  = useRef(0);
+  const debounceTimer = useRef(null);
+  const searchSeq     = useRef(0);
 
-  useEffect(() => {
-    return () => clearTimeout(debounceTimer.current);
-  }, []);
+  useEffect(() => () => clearTimeout(debounceTimer.current), []);
+
+  const clearFieldError = (field) => setFieldErrors(fe => ({ ...fe, [field]: undefined }));
 
   const handleSearch = (value) => {
     setQuery(value);
     setError(null);
     clearTimeout(debounceTimer.current);
 
-    if (value.trim().length < 2) {
-      setResults([]);
-      setError(null);
-      return;
-    }
+    if (value.trim().length < 2) { setResults([]); return; }
 
     if (!NAME_SEARCH_RE.test(value.trim())) {
       setError('Search can only contain letters, spaces, hyphens, apostrophes, or periods.');
@@ -64,42 +54,36 @@ function CustomerSearch() {
     }
 
     debounceTimer.current = setTimeout(async () => {
-      const seq = ++currentSearch.current;
+      const seq = ++searchSeq.current;
       setLoading(true);
       try {
         const data = await searchCustomers(value.trim());
-        if (seq !== currentSearch.current) return;
+        if (seq !== searchSeq.current) return;
         setResults(Array.isArray(data) ? data : []);
       } catch {
-        if (seq !== currentSearch.current) return;
+        if (seq !== searchSeq.current) return;
         setError('Search failed. Please try again.');
         setResults([]);
       } finally {
-        if (seq === currentSearch.current) setLoading(false);
+        if (seq === searchSeq.current) setLoading(false);
       }
     }, 300);
   };
 
   const handleAddCustomer = async () => {
-    // Client-side validation — show errors next to the offending fields
-    const errors = validate({ name: newName, email: newEmail, phone: newPhone });
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      return;
-    }
+    const errors = validateCustomer({ name: newName, email: newEmail, phone: newPhone });
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+
     setFieldErrors({});
     setMessage(null);
     setSubmitting(true);
     try {
       const result = await createCustomer({ name: newName, email: newEmail, phone: newPhone });
       setMessage({ type: 'success', text: `Customer "${result.name}" added!` });
-      setNewName('');
-      setNewEmail('');
-      setNewPhone('');
+      setNewName(''); setNewEmail(''); setNewPhone('');
       setShowAdd(false);
       if (query) handleSearch(query);
     } catch (err) {
-      // Backend error (e.g. duplicate email 409, or unexpected validation failure)
       setMessage({ type: 'error', text: err.message || 'Failed to save customer.' });
     } finally {
       setSubmitting(false);
@@ -107,7 +91,7 @@ function CustomerSearch() {
   };
 
   const handleToggleAdd = () => {
-    setShowAdd(!showAdd);
+    setShowAdd(v => !v);
     setFieldErrors({});
     setMessage(null);
   };
@@ -142,7 +126,7 @@ function CustomerSearch() {
             <label>Name</label>
             <input
               value={newName}
-              onChange={(e) => { setNewName(e.target.value); setFieldErrors(fe => ({ ...fe, name: undefined })); }}
+              onChange={(e) => { setNewName(e.target.value); clearFieldError('name'); }}
               style={fieldErrors.name ? { borderColor: '#c0392b' } : undefined}
             />
             {fieldErrors.name && <p className="field-error">{fieldErrors.name}</p>}
@@ -152,7 +136,7 @@ function CustomerSearch() {
             <input
               type="email"
               value={newEmail}
-              onChange={(e) => { setNewEmail(e.target.value); setFieldErrors(fe => ({ ...fe, email: undefined })); }}
+              onChange={(e) => { setNewEmail(e.target.value); clearFieldError('email'); }}
               style={fieldErrors.email ? { borderColor: '#c0392b' } : undefined}
             />
             {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
@@ -161,7 +145,7 @@ function CustomerSearch() {
             <label>Phone <span style={{ color: '#999', fontWeight: 400 }}>(optional)</span></label>
             <input
               value={newPhone}
-              onChange={(e) => { setNewPhone(e.target.value); setFieldErrors(fe => ({ ...fe, phone: undefined })); }}
+              onChange={(e) => { setNewPhone(e.target.value); clearFieldError('phone'); }}
               style={fieldErrors.phone ? { borderColor: '#c0392b' } : undefined}
             />
             {fieldErrors.phone && <p className="field-error">{fieldErrors.phone}</p>}
@@ -173,18 +157,17 @@ function CustomerSearch() {
       )}
 
       {loading && <p style={{ color: '#999' }}>Searching...</p>}
-      {error && <p style={{ color: '#c00' }}>{error}</p>}
+      {error   && <p style={{ color: '#c00' }}>{error}</p>}
 
-      {!loading && !error && results.length > 0 ? (
-        results.map((customer) => (
-          <div className="customer-card" key={customer.id}>
-            <h3>{customer.name}</h3>
-            <p>{customer.email} • {customer.phone}</p>
-          </div>
-        ))
-      ) : (
-        !loading && !error && query.trim().length >= 2 && results.length === 0 &&
-          <p style={{ color: '#999' }}>No customers found.</p>
+      {!loading && !error && results.length > 0 && results.map((customer) => (
+        <div className="customer-card" key={customer.id}>
+          <h3>{customer.name}</h3>
+          <p>{customer.email} • {customer.phone}</p>
+        </div>
+      ))}
+
+      {!loading && !error && query.trim().length >= 2 && results.length === 0 && (
+        <p style={{ color: '#999' }}>No customers found.</p>
       )}
     </div>
   );

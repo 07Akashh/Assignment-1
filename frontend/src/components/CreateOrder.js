@@ -1,19 +1,18 @@
 import { useState, useEffect } from 'react';
 import { fetchCustomers, fetchProducts, createOrder } from '../api';
-import { useAutoMessage } from '../hooks/useAutoMessage';
 import FlashMessage from './FlashMessage';
 
 function CreateOrder() {
-  const [customers, setCustomers] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [customers, setCustomers]           = useState([]);
+  const [products, setProducts]             = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [address, setAddress] = useState('');
-  const [message, setMessage] = useAutoMessage();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [selectedProduct, setSelectedProduct]   = useState('');
+  const [quantity, setQuantity]             = useState(1);
+  const [address, setAddress]               = useState('');
+  const [message, setMessage]               = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState(null);
+  const [submitting, setSubmitting]         = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -32,7 +31,6 @@ function CreateOrder() {
     load();
   }, []);
 
-  // Fixed: selectedProduct in dep array so selectedProductData stays in sync
   const selectedProductData = products.find(p => p.id === parseInt(selectedProduct)) || null;
 
   const handleSubmit = async () => {
@@ -54,7 +52,7 @@ function CreateOrder() {
     try {
       const result = await createOrder({
         customer_id: parseInt(selectedCustomer),
-        product_id: parseInt(selectedProduct),
+        product_id:  parseInt(selectedProduct),
         quantity,
         shipping_address: address,
       });
