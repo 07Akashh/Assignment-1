@@ -1,29 +1,78 @@
-version: '3'
+# version: '3'
+
+# services:
+#   db:
+#     image: postgres:15
+#     environment:
+#       POSTGRES_USER: admin
+#       POSTGRES_PASSWORD: admin123
+#       POSTGRES_DB: orderdb
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+#   backend:
+#     build: ./backend
+#     ports:
+#       - "3001:3001"
+#     environment:
+#       PORT: 3001
+#     depends_on:
+#       - db
+
+#   frontend:
+#     build: ./frontend
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - backend
+
+# volumes:
+#   pgdata:
+
+
+
+version: "3.9"
 
 services:
   db:
     image: postgres:15
+    container_name: postgres_db
+    restart: always
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: orderdb
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
+    container_name: backend_service
+    restart: always
     ports:
       - "3001:3001"
     environment:
       PORT: 3001
+      DATABASE_URL: postgres://admin:admin123@db:5432/orderdb
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
+    container_name: frontend_service
+    restart: always
     ports:
       - "3000:3000"
     depends_on:
