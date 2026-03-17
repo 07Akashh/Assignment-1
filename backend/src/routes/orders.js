@@ -55,16 +55,21 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res, next) => {
   const { customer_id, product_id, quantity, shipping_address } = req.body;
 
-  const missing = ['customer_id', 'product_id', 'quantity', 'shipping_address']
-    .filter(f => req.body[f] == null);
-  if (missing.length) {
-    const err = new Error(`Missing required fields: ${missing.join(', ')}`);
-    err.status = 400;
-    err.isOperational = true;
-    return next(err);
+  const errors = [];
+  if (customer_id == null || !Number.isInteger(customer_id) || customer_id < 1) {
+    errors.push('customer_id must be a positive integer');
   }
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    const err = new Error('quantity must be a positive integer');
+  if (product_id == null || !Number.isInteger(product_id) || product_id < 1) {
+    errors.push('product_id must be a positive integer');
+  }
+  if (quantity == null || !Number.isInteger(quantity) || quantity < 1) {
+    errors.push('quantity must be a positive integer');
+  }
+  if (!shipping_address || typeof shipping_address !== 'string' || !shipping_address.trim()) {
+    errors.push('shipping_address is required and must be a non-empty string');
+  }
+  if (errors.length) {
+    const err = new Error(errors.join('; '));
     err.status = 400;
     err.isOperational = true;
     return next(err);

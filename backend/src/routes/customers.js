@@ -39,17 +39,43 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create customer - BUG: no input validation at all
-router.post('/', async (req, res) => {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Create customer
+router.post('/', async (req, res, next) => {
   try {
     const { name, email, phone } = req.body;
+
+    const errors = [];
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      errors.push('name is required and must be a non-empty string');
+    }
+    if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
+      errors.push('email is required and must be a valid email address');
+    }
+    if (phone !== undefined && phone !== null && typeof phone !== 'string') {
+      errors.push('phone must be a string');
+    }
+    if (errors.length) {
+      const err = new Error(errors.join('; '));
+      err.status = 400;
+      err.isOperational = true;
+      return next(err);
+    }
+
     const result = await pool.query(
       'INSERT INTO customers (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
-      [name, email, phone]
+      [name.trim(), email.trim().toLowerCase(), phone || null]
     );
-    res.json(result.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create customer' });
+    if (err.code === '23505') {
+      const e = new Error('A customer with this email already exists');
+      e.status = 409;
+      e.isOperational = true;
+      return next(e);
+    }
+    next(err);
   }
 });
 
