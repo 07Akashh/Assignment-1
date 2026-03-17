@@ -116,21 +116,61 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+const VALID_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+
+const ALLOWED_TRANSITIONS = {
+  pending:   ['confirmed', 'cancelled'],
+  confirmed: ['shipped',   'cancelled'],
+  shipped:   ['delivered'],
+  delivered: [],
+  cancelled: [],
+};
+
 // Update order status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', async (req, res, next) => {
   try {
     const { status } = req.body;
-    // BUG: No validation on status transitions - can go from 'delivered' back to 'pending'
+
+    if (!status) {
+      const err = new Error('status is required');
+      err.status = 400;
+      err.isOperational = true;
+      return next(err);
+    }
+
+    if (!VALID_STATUSES.includes(status)) {
+      const err = new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
+      err.status = 400;
+      err.isOperational = true;
+      return next(err);
+    }
+
+    const current = await pool.query('SELECT status FROM orders WHERE id = $1', [req.params.id]);
+    if (current.rows.length === 0) {
+      const err = new Error('Order not found');
+      err.status = 404;
+      err.isOperational = true;
+      return next(err);
+    }
+
+    const currentStatus = current.rows[0].status;
+    if (!ALLOWED_TRANSITIONS[currentStatus].includes(status)) {
+      const err = new Error(
+        `Cannot transition order from "${currentStatus}" to "${status}". ` +
+        `Allowed: ${ALLOWED_TRANSITIONS[currentStatus].join(', ') || 'none'}`
+      );
+      err.status = 422;
+      err.isOperational = true;
+      return next(err);
+    }
+
     const result = await pool.query(
       'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
       [status, req.params.id]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to update order status' });
+    next(err);
   }
 });
 
