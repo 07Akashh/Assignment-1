@@ -103,8 +103,8 @@ router.post('/', writeLimiter, async (req, res, next) => {
 
     const orderResult = await client.query(
       `INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
-       VALUES ($1, $2, $3, (SELECT price * $3 FROM products WHERE id = $2), $4, 'pending') RETURNING *`,
-      [customer_id, product_id, quantity, shipping_address]
+       VALUES ($1, $2, $3, (SELECT price * $4 FROM products WHERE id = $2), $5, 'pending') RETURNING *`,
+      [customer_id, product_id, quantity, quantity, shipping_address]
     );
 
     await client.query(
