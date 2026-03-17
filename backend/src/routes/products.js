@@ -3,26 +3,32 @@ const router = express.Router();
 const pool = require('../config/db');
 const { writeLimiter } = require('../middleware/limiters');
 
+const PRODUCT_COLS = 'id, name, description, price, inventory_count, created_at';
+const PRODUCT_LIST_COLS = 'id, name, price, inventory_count, created_at';
+
 // Get all products
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const result = await pool.query('SELECT * FROM products ORDER BY name');
+    const result = await pool.query(`SELECT ${PRODUCT_LIST_COLS} FROM products ORDER BY name`);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch products' });
+    next(err);
   }
 });
 
 // Get single product
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const result = await pool.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
+    const result = await pool.query(`SELECT ${PRODUCT_COLS} FROM products WHERE id = $1`, [req.params.id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Product not found' });
+      const err = new Error('Product not found');
+      err.status = 404;
+      err.isOperational = true;
+      return next(err);
     }
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch product' });
+    next(err);
   }
 });
 

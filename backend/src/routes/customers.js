@@ -3,40 +3,53 @@ const router = express.Router();
 const pool = require('../config/db');
 const { writeLimiter } = require('../middleware/limiters');
 
+const CUSTOMER_COLS = 'id, name, email, phone, created_at';
+
 // Get all customers
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
-    const result = await pool.query('SELECT * FROM customers ORDER BY created_at DESC');
+    const result = await pool.query(`SELECT ${CUSTOMER_COLS} FROM customers ORDER BY created_at DESC`);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch customers' });
+    next(err);
   }
 });
 
 // Search customers by name
-router.get('/search', async (req, res) => {
+router.get('/search', async (req, res, next) => {
   try {
     const { name } = req.query;
+
+    if (!name || name.trim().length < 2) {
+      const err = new Error('Search term must be at least 2 characters');
+      err.status = 400;
+      err.isOperational = true;
+      return next(err);
+    }
+
     const result = await pool.query(
-      'SELECT * FROM customers WHERE name ILIKE $1',
-      [`%${name}%`]
+      `SELECT ${CUSTOMER_COLS} FROM customers WHERE name ILIKE $1 ORDER BY name`,
+      [`%${name.trim()}%`]
     );
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Search failed' });
+    next(err);
   }
 });
 
 // Get single customer
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const result = await pool.query('SELECT * FROM customers WHERE id = $1', [req.params.id]);
+    const result = await pool.query(`SELECT ${CUSTOMER_COLS} FROM customers WHERE id = $1`, [req.params.id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+      const err = new Error('Customer not found');
+      err.status = 404;
+      err.isOperational = true;
+      return next(err);
     }
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch customer' });
+    next(err);
   }
 });
 

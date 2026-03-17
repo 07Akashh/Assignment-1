@@ -28,11 +28,15 @@ CREATE TABLE orders (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Extensions
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- Indexes
-CREATE INDEX idx_orders_customer_id  ON orders(customer_id);
-CREATE INDEX idx_orders_product_id   ON orders(product_id);
-CREATE INDEX idx_orders_status       ON orders(status);
-CREATE INDEX idx_orders_created_at   ON orders(created_at DESC);
+CREATE INDEX idx_orders_customer_id      ON orders(customer_id);
+CREATE INDEX idx_orders_product_id       ON orders(product_id);
+CREATE INDEX idx_orders_status           ON orders(status);
+CREATE INDEX idx_orders_created_at       ON orders(created_at DESC);
+CREATE INDEX idx_customers_name_trgm     ON customers USING GIN (name gin_trgm_ops);
 
 -- Seed: Customers
 INSERT INTO customers (name, email, phone) VALUES
