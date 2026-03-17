@@ -68,49 +68,53 @@ router.post('/', writeLimiter, async (req, res, next) => {
     return next(err);
   }
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    // Lock the product row so concurrent requests queue here
-    const productResult = await client.query(
-      'SELECT * FROM products WHERE id = $1 FOR UPDATE',
-      [product_id]
+    const result = await pool.query(
+      `WITH reserved AS (
+         UPDATE products
+         SET    inventory_count = inventory_count - $1
+         WHERE  id = $2
+           AND  inventory_count >= $1
+         RETURNING id, price, inventory_count AS remaining
+       ),
+       product_exists AS (
+         SELECT id FROM products WHERE id = $2
+       ),
+       new_order AS (
+         INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
+         SELECT $3, $2, $1, r.price * $1, $4, 'pending'
+         FROM   reserved r
+         RETURNING *
+       )
+       SELECT
+         o.*,
+         CASE
+           WHEN NOT EXISTS (SELECT 1 FROM product_exists) THEN 'not_found'
+           WHEN NOT EXISTS (SELECT 1 FROM reserved)       THEN 'insufficient'
+           ELSE 'ok'
+         END AS _result
+       FROM new_order o`,
+      [quantity, product_id, customer_id, shipping_address]
     );
-    if (productResult.rows.length === 0) {
-      const err = new Error('Product not found');
-      err.status = 404;
-      err.isOperational = true;
-      throw err;
-    }
 
-    const product = productResult.rows[0];
-
-    if (product.inventory_count < quantity) {
-      const err = new Error(`Insufficient inventory — only ${product.inventory_count} unit(s) available`);
+    if (result.rows.length === 0) {
+      const row = await pool.query('SELECT inventory_count FROM products WHERE id = $1', [product_id]);
+      if (row.rows.length === 0) {
+        const err = new Error('Product not found');
+        err.status = 404;
+        err.isOperational = true;
+        return next(err);
+      }
+      const err = new Error(`Insufficient inventory — only ${row.rows[0].inventory_count} unit(s) available`);
       err.status = 400;
       err.isOperational = true;
-      throw err;
+      return next(err);
     }
 
-    const orderResult = await client.query(
-      `INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
-       VALUES ($1, $2, $3, (SELECT price * $4 FROM products WHERE id = $2), $5, 'pending') RETURNING *`,
-      [customer_id, product_id, quantity, quantity, shipping_address]
-    );
-
-    await client.query(
-      'UPDATE products SET inventory_count = inventory_count - $1 WHERE id = $2',
-      [quantity, product_id]
-    );
-
-    await client.query('COMMIT');
-    res.status(201).json(orderResult.rows[0]);
+    const { _result, ...order } = result.rows[0];
+    res.status(201).json(order);
   } catch (err) {
-    await client.query('ROLLBACK');
     next(err);
-  } finally {
-    client.release();
   }
 });
 
