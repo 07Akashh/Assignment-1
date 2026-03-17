@@ -1,5 +1,6 @@
 const http = require('http');
 const express = require('express');
+const helmet = require('helmet');
 const cors = require('cors');
 const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
@@ -8,6 +9,9 @@ const { readLimiter } = require('./middleware/limiters');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Security headers — must be first middleware
+app.use(helmet());
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
