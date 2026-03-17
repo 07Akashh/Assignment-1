@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchCustomers, fetchProducts, createOrder } from '../api';
 import { useAutoMessage } from '../hooks/useAutoMessage';
+import FlashMessage from './FlashMessage';
 
 function CreateOrder() {
   const [customers, setCustomers] = useState([]);
@@ -76,9 +77,7 @@ function CreateOrder() {
     <div className="create-order">
       <h2>Create New Order</h2>
 
-      {message && (
-        <div className={`message ${message.type}`}>{message.text}</div>
-      )}
+      {message && <FlashMessage message={message} onDismiss={() => setMessage(null)} />}
 
       <div className="form-group">
         <label>Customer</label>

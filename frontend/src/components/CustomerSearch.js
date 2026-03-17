@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
 import { useAutoMessage } from '../hooks/useAutoMessage';
+import FlashMessage from './FlashMessage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -115,9 +116,7 @@ function CustomerSearch() {
     <div className="customer-search">
       <h2>Customer Search</h2>
 
-      {message && (
-        <div className={`message ${message.type}`}>{message.text}</div>
-      )}
+      {message && <FlashMessage message={message} onDismiss={() => setMessage(null)} />}
 
       <input
         className="search-input"
