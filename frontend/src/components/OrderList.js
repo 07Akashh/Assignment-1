@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
+import CancelOrderDialog from './CancelOrderDialog';
 
 const PAGE_LIMIT = parseInt(process.env.REACT_APP_PAGE_LIMIT || '50');
 
@@ -22,9 +23,9 @@ function OrderList() {
   const [error, setError]                 = useState(null);
 
   // Cancel flow state
-  const [confirmCancelId, setConfirmCancelId] = useState(null); // order awaiting confirmation
-  const [cancellingId, setCancellingId]       = useState(null); // order whose request is in-flight
-  const [cancelError, setCancelError]         = useState(null); // { id, message }
+  const [cancelDialogOrder, setCancelDialogOrder] = useState(null); // order shown in dialog
+  const [cancellingId, setCancellingId]           = useState(null); // in-flight cancel request
+  const [cancelError, setCancelError]             = useState(null); // { id, message }
 
   const loadOrders = useCallback(async (p = page) => {
     setLoading(true);
@@ -43,7 +44,7 @@ function OrderList() {
 
   useEffect(() => {
     loadOrders(page);
-  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page]); // loadOrders is stable within a page value; page change triggers reload via setPage
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -54,20 +55,20 @@ function OrderList() {
     }
   };
 
-  // Step 1: user clicks Cancel — show inline confirmation
-  const handleCancelClick = (orderId) => {
+  // Opens the confirmation dialog with the full order object
+  const handleCancelClick = (order) => {
     setCancelError(null);
-    setConfirmCancelId(orderId);
+    setCancelDialogOrder(order);
   };
 
-  // Step 2a: user confirms — call the dedicated cancel endpoint
+  // User confirmed in the dialog — call the dedicated cancel endpoint
   const handleCancelConfirm = async (orderId) => {
-    setConfirmCancelId(null);
+    setCancelDialogOrder(null);
     setCancellingId(orderId);
     setCancelError(null);
     try {
       await cancelOrder(orderId);
-      loadOrders(page); // reload to reflect new status + updated inventory
+      loadOrders(page);
     } catch (err) {
       setCancelError({ id: orderId, message: err.message || 'Failed to cancel order.' });
     } finally {
@@ -75,8 +76,8 @@ function OrderList() {
     }
   };
 
-  // Step 2b: user aborts
-  const handleCancelAbort = () => setConfirmCancelId(null);
+  // User dismissed the dialog without confirming
+  const handleCancelAbort = () => setCancelDialogOrder(null);
 
   const sortedOrders = [...orders].sort((a, b) => {
     let aVal = a[sortField];
@@ -106,6 +107,7 @@ function OrderList() {
   return (
     <div className="order-list">
       <h2>Orders ({total})</h2>
+
       <table className="order-table">
         <thead>
           <tr>
@@ -147,32 +149,15 @@ function OrderList() {
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
               <td>
-                {confirmCancelId === order.id ? (
-                  // Inline confirmation — no browser dialog, fully keyboard-accessible
-                  <span style={{ display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}>
-                    <small style={{ color: '#555' }}>Cancel order?</small>
-                    <button
-                      onClick={() => handleCancelConfirm(order.id)}
-                      style={{ color: '#fff', background: '#c00', border: 'none', borderRadius: '3px', padding: '0.15rem 0.4rem', cursor: 'pointer' }}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      onClick={handleCancelAbort}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      No
-                    </button>
-                  </span>
-                ) : cancellingId === order.id ? (
+                {cancellingId === order.id ? (
                   <small style={{ color: '#999' }}>Cancelling…</small>
                 ) : (
                   <>
                     {CANCELLABLE_STATUSES.has(order.status) && (
                       <button
-                        onClick={() => handleCancelClick(order.id)}
+                        className="btn-cancel-order"
+                        onClick={() => handleCancelClick(order)}
                         disabled={cancellingId !== null}
-                        style={{ color: '#c00', cursor: 'pointer' }}
                       >
                         Cancel
                       </button>
@@ -197,6 +182,13 @@ function OrderList() {
           <button onClick={() => setPage(p => p + 1)} disabled={page === totalPages}>Next →</button>
         </div>
       )}
+
+      {/* Rendered outside the table to avoid invalid DOM nesting */}
+      <CancelOrderDialog
+        order={cancelDialogOrder}
+        onConfirm={handleCancelConfirm}
+        onAbort={handleCancelAbort}
+      />
     </div>
   );
 }
