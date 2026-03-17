@@ -41,10 +41,10 @@ router.get('/', async (req, res, next) => {
 });
 
 // Get single order
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT o.*, c.name as customer_name, c.email as customer_email, 
+      `SELECT o.*, c.name as customer_name, c.email as customer_email,
               p.name as product_name, p.price as product_price
        FROM orders o
        JOIN customers c ON o.customer_id = c.id
@@ -53,11 +53,13 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Order not found' });
+      const err = new Error('Order not found');
+      err.status = 404; err.isOperational = true;
+      return next(err);
     }
-    res.json(result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch order' });
+    next(err);
   }
 });
 
@@ -129,7 +131,7 @@ router.post('/', writeLimiter, async (req, res, next) => {
     }
 
     const { _result, ...order } = result.rows[0];
-    res.status(201).json(order);
+    res.status(201).json({ data: order });
   } catch (err) {
     next(err);
   }
@@ -187,7 +189,7 @@ router.patch('/:id/status', writeLimiter, async (req, res, next) => {
       'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
       [status, req.params.id]
     );
-    res.json(result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
     next(err);
   }

@@ -45,7 +45,7 @@ router.get('/search', async (req, res, next) => {
       `SELECT ${CUSTOMER_COLS} FROM customers WHERE name ILIKE $1 ORDER BY name`,
       [`%${name.trim()}%`]
     );
-    res.json(result.rows);
+    res.json({ data: result.rows });
   } catch (err) {
     next(err);
   }
@@ -61,7 +61,7 @@ router.get('/:id', async (req, res, next) => {
       err.isOperational = true;
       return next(err);
     }
-    res.json(result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
     next(err);
   }
@@ -95,7 +95,7 @@ router.post('/', writeLimiter, async (req, res, next) => {
       'INSERT INTO customers (name, email, phone) VALUES ($1, $2, $3) RETURNING *',
       [name.trim(), email.trim().toLowerCase(), phone || null]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({ data: result.rows[0] });
   } catch (err) {
     if (err.code === '23505') {
       const e = new Error('A customer with this email already exists');

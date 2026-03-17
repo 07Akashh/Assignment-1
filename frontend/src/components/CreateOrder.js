@@ -20,7 +20,7 @@ function CreateOrder() {
       try {
         const [cRes, pRes] = await Promise.all([fetchCustomers(), fetchProducts()]);
         setCustomers(Array.isArray(cRes.data) ? cRes.data : []);
-        setProducts(Array.isArray(pRes) ? pRes : []);
+        setProducts(Array.isArray(pRes.data) ? pRes.data : []);
       } catch (err) {
         setError(err.message || 'Failed to load form data. Please refresh.');
       } finally {

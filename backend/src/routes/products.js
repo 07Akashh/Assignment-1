@@ -10,7 +10,7 @@ const PRODUCT_LIST_COLS = 'id, name, price, inventory_count, created_at';
 router.get('/', async (req, res, next) => {
   try {
     const result = await pool.query(`SELECT ${PRODUCT_LIST_COLS} FROM products ORDER BY name`);
-    res.json(result.rows);
+    res.json({ data: result.rows });
   } catch (err) {
     next(err);
   }
@@ -26,7 +26,7 @@ router.get('/:id', async (req, res, next) => {
       err.isOperational = true;
       return next(err);
     }
-    res.json(result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
     next(err);
   }
@@ -75,7 +75,7 @@ router.patch('/:id/inventory', writeLimiter, async (req, res, next) => {
     );
 
     await client.query('COMMIT');
-    res.json(result.rows[0]);
+    res.json({ data: result.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);

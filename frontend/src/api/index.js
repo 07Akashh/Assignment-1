@@ -46,41 +46,48 @@ export async function fetchOrders({ page = 1, limit = 50 } = {}) {
 }
 
 export async function fetchOrder(id) {
-  return fetchWithRetry(`${API_BASE}/orders/${id}`);
+  const res = await fetchWithRetry(`${API_BASE}/orders/${id}`);
+  return res.data;
 }
 
 export async function createOrder(data) {
-  return fetchWithRetry(`${API_BASE}/orders`, {
+  const res = await fetchWithRetry(`${API_BASE}/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }, 0); // no retries on mutations
+  return res.data;
 }
 
 export async function updateOrderStatus(id, status) {
-  return fetchWithRetry(`${API_BASE}/orders/${id}/status`, {
+  const res = await fetchWithRetry(`${API_BASE}/orders/${id}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   }, 0); // no retries on mutations
+  return res.data;
 }
 
-export async function fetchCustomers() {
+// Returns { data, total, page, limit } — callers handle pagination shape
+export async function fetchCustomers(params = {}) {
   return fetchWithRetry(`${API_BASE}/customers`);
 }
 
 export async function searchCustomers(name) {
-  return fetchWithRetry(`${API_BASE}/customers/search?name=${encodeURIComponent(name)}`);
+  const res = await fetchWithRetry(`${API_BASE}/customers/search?name=${encodeURIComponent(name)}`);
+  return res.data;
 }
 
 export async function createCustomer(data) {
-  return fetchWithRetry(`${API_BASE}/customers`, {
+  const res = await fetchWithRetry(`${API_BASE}/customers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }, 0); // no retries on mutations
+  return res.data;
 }
 
+// Returns { data } — callers extract .data array
 export async function fetchProducts() {
   return fetchWithRetry(`${API_BASE}/products`);
 }
