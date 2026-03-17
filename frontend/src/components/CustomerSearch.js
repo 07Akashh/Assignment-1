@@ -1,7 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Valid name search: letters (basic + extended Latin for accented chars),
+// spaces, hyphens, apostrophes, periods — no digits or special characters.
+// Covers: "Aarav", "O'Brien", "Mary-Jane", "Dr. Smith", "José", "Müller"
+const NAME_SEARCH_RE = /^[a-zA-Z\u00C0-\u024F\s'\-.]+$/;
 // Accepts digits, spaces, +, -, (, ) — must have 7–15 digits total (ITU E.164)
 const PHONE_DIGITS_RE = /\d/g;
 
@@ -45,6 +50,13 @@ function CustomerSearch() {
     clearTimeout(debounceTimer.current);
 
     if (value.trim().length < 2) {
+      setResults([]);
+      setError(null);
+      return;
+    }
+
+    if (!NAME_SEARCH_RE.test(value.trim())) {
+      setError('Search can only contain letters, spaces, hyphens, apostrophes, or periods.');
       setResults([]);
       return;
     }
