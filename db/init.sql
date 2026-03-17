@@ -28,6 +28,12 @@ CREATE TABLE orders (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Indexes
+CREATE INDEX idx_orders_customer_id  ON orders(customer_id);
+CREATE INDEX idx_orders_product_id   ON orders(product_id);
+CREATE INDEX idx_orders_status       ON orders(status);
+CREATE INDEX idx_orders_created_at   ON orders(created_at DESC);
+
 -- Seed: Customers
 INSERT INTO customers (name, email, phone) VALUES
 ('Aarav Sharma', 'aarav@example.com', '9876543210'),
