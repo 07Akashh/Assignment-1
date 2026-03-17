@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { fetchCustomers, fetchProducts, createOrder } from '../api';
 
 function CreateOrder() {
@@ -9,22 +9,29 @@ function CreateOrder() {
   const [quantity, setQuantity] = useState(1);
   const [address, setAddress] = useState('');
   const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Load customers and products
   useEffect(() => {
-    fetchCustomers().then(setCustomers);
-    fetchProducts().then(setProducts);
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [cRes, pRes] = await Promise.all([fetchCustomers(), fetchProducts()]);
+        setCustomers(Array.isArray(cRes.data) ? cRes.data : []);
+        setProducts(Array.isArray(pRes) ? pRes : []);
+      } catch (err) {
+        setError(err.message || 'Failed to load form data. Please refresh.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
-  // BUG: Missing dependency - selectedProduct is used inside but not in dep array.
-  // This means `selectedProductData` shows stale info when user changes product selection.
-  const [selectedProductData, setSelectedProductData] = useState(null);
-  useEffect(() => {
-    if (selectedProduct) {
-      const product = products.find(p => p.id === parseInt(selectedProduct));
-      setSelectedProductData(product);
-    }
-  }, [products]); // Missing: selectedProduct
+  // Fixed: selectedProduct in dep array so selectedProductData stays in sync
+  const selectedProductData = products.find(p => p.id === parseInt(selectedProduct)) || null;
 
   const handleSubmit = async () => {
     if (!selectedCustomer || !selectedProduct || !address) {
@@ -32,24 +39,29 @@ function CreateOrder() {
       return;
     }
 
-    const result = await createOrder({
-      customer_id: parseInt(selectedCustomer),
-      product_id: parseInt(selectedProduct),
-      quantity: quantity,
-      shipping_address: address,
-    });
-
-    if (result.error) {
-      setMessage({ type: 'error', text: result.error });
-    } else {
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const result = await createOrder({
+        customer_id: parseInt(selectedCustomer),
+        product_id: parseInt(selectedProduct),
+        quantity,
+        shipping_address: address,
+      });
       setMessage({ type: 'success', text: `Order #${result.id} created successfully!` });
       setSelectedCustomer('');
       setSelectedProduct('');
       setQuantity(1);
       setAddress('');
-      setSelectedProductData(null);
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Failed to create order.' });
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  if (loading) return <div className="create-order"><p style={{ color: '#999' }}>Loading...</p></div>;
+  if (error)   return <div className="create-order"><p style={{ color: '#c00' }}>{error}</p></div>;
 
   return (
     <div className="create-order">
@@ -107,8 +119,8 @@ function CreateOrder() {
         />
       </div>
 
-      <button className="submit-btn" onClick={handleSubmit}>
-        Place Order
+      <button className="submit-btn" onClick={handleSubmit} disabled={submitting}>
+        {submitting ? 'Placing Order...' : 'Place Order'}
       </button>
     </div>
   );

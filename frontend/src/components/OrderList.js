@@ -9,11 +9,22 @@ function OrderList() {
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const loadOrders = useCallback(async (p = page) => {
-    const res = await fetchOrders({ page: p, limit: PAGE_LIMIT });
-    setOrders(Array.isArray(res.data) ? res.data : []);
-    setTotal(res.total || 0);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchOrders({ page: p, limit: PAGE_LIMIT });
+      setOrders(Array.isArray(res.data) ? res.data : []);
+      setTotal(res.total || 0);
+    } catch (err) {
+      setError(err.message || 'Failed to load orders. Please try again.');
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   }, [page]);
 
   useEffect(() => {
@@ -21,8 +32,12 @@ function OrderList() {
   }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStatusChange = async (orderId, newStatus) => {
-    await updateOrderStatus(orderId, newStatus);
-    loadOrders(page);
+    try {
+      await updateOrderStatus(orderId, newStatus);
+      loadOrders(page);
+    } catch (err) {
+      setError(err.message || 'Failed to update order status.');
+    }
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -47,6 +62,9 @@ function OrderList() {
 
   const totalPages = Math.ceil(total / PAGE_LIMIT);
   const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+
+  if (loading) return <div className="order-list"><p style={{ color: '#999' }}>Loading orders...</p></div>;
+  if (error)   return <div className="order-list"><p style={{ color: '#c00' }}>{error} <button onClick={() => loadOrders(page)}>Retry</button></p></div>;
 
   return (
     <div className="order-list">
