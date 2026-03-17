@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
+import { useAutoMessage } from '../hooks/useAutoMessage';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,7 +32,7 @@ function CustomerSearch() {
   const [newName, setNewName]   = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [message, setMessage]   = useState(null);
+  const [message, setMessage]   = useAutoMessage();
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(null);
   const [submitting, setSubmitting] = useState(false);

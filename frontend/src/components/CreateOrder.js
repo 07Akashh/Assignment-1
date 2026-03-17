@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchCustomers, fetchProducts, createOrder } from '../api';
+import { useAutoMessage } from '../hooks/useAutoMessage';
 
 function CreateOrder() {
   const [customers, setCustomers] = useState([]);
@@ -8,7 +9,7 @@ function CreateOrder() {
   const [selectedProduct, setSelectedProduct] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [address, setAddress] = useState('');
-  const [message, setMessage] = useState(null);
+  const [message, setMessage] = useAutoMessage();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
