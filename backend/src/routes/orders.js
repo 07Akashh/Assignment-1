@@ -212,4 +212,56 @@ router.patch('/:id/status', writeLimiter, async (req, res, next) => {
   }
 });
 
+// Cancel order — atomically marks cancelled and restores inventory
+router.post('/:id/cancel', writeLimiter, async (req, res, next) => {
+  try {
+    // Single CTE: cancel the order and restore inventory in one round trip.
+    // The inventory UPDATE only runs if the order row was actually updated
+    // (FROM cancelled with 0 rows → 0 product rows matched → no inventory change).
+    const result = await pool.query(
+      `WITH cancelled AS (
+         UPDATE orders
+         SET    status = 'cancelled'
+         WHERE  id = $1
+           AND  status = ANY(ARRAY['pending', 'confirmed'])
+         RETURNING *
+       ),
+       _restored AS (
+         UPDATE products
+         SET    inventory_count = inventory_count + c.quantity
+         FROM   cancelled c
+         WHERE  products.id = c.product_id
+       )
+       SELECT * FROM cancelled`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      // Distinguish "not found" from "wrong status"
+      const check = await pool.query(
+        'SELECT status FROM orders WHERE id = $1',
+        [req.params.id]
+      );
+      if (check.rows.length === 0) {
+        const err = new Error('Order not found');
+        err.status = 404; err.isOperational = true;
+        return next(err);
+      }
+      const current = check.rows[0].status;
+      const err = new Error(
+        current === 'cancelled'
+          ? 'Order is already cancelled'
+          : `Order cannot be cancelled — current status is "${current}". ` +
+            `Only pending or confirmed orders may be cancelled.`
+      );
+      err.status = 422; err.isOperational = true;
+      return next(err);
+    }
+
+    res.json({ data: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

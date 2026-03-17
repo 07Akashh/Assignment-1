@@ -87,6 +87,13 @@ export async function createCustomer(data) {
   return res.data;
 }
 
+export async function cancelOrder(id) {
+  const res = await fetchWithRetry(`${API_BASE}/orders/${id}/cancel`, {
+    method: 'POST',
+  }, 0); // no retries — cancellation is a mutation
+  return res.data;
+}
+
 // Returns { data } — callers extract .data array
 export async function fetchProducts() {
   return fetchWithRetry(`${API_BASE}/products`);
