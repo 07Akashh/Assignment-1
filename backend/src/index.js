@@ -21,9 +21,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // BUG: Global error handler that swallows errors and always returns 200
+app.use((req, res, next) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Error middleware
 app.use((err, req, res, next) => {
-  console.log('Something happened');
-  res.status(200).json({ success: true });
+  console.error(err);
+  const status = err.status || 500;
+  res.status(status).json({
+    error: err.message || 'Internal Server Error',
+  });
 });
 
 app.listen(PORT, () => {
