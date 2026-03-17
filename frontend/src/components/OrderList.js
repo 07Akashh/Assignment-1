@@ -4,11 +4,16 @@ import CancelOrderDialog from './CancelOrderDialog';
 
 const PAGE_LIMIT = parseInt(process.env.REACT_APP_PAGE_LIMIT || '50');
 
-// Statuses the user can advance an order to via the dropdown.
-// 'cancelled' is intentionally excluded — use the Cancel button, which
-// also restores inventory. Selecting 'cancelled' via the generic PATCH
-// endpoint would skip the inventory rollback.
-const STATUS_OPTIONS = ['pending', 'confirmed', 'shipped', 'delivered'];
+// Must stay in sync with ALLOWED_TRANSITIONS in backend/src/routes/orders.js.
+// 'cancelled' is intentionally absent from every list — cancellation goes
+// through the Cancel button which also restores inventory.
+const ALLOWED_TRANSITIONS = {
+  pending:   ['confirmed'],
+  confirmed: ['shipped'],
+  shipped:   ['delivered'],
+  delivered: [],
+  cancelled: [],
+};
 
 // Orders in these statuses are eligible for cancellation.
 const CANCELLABLE_STATUSES = new Set(['pending', 'confirmed']);
@@ -133,19 +138,24 @@ function OrderList() {
               <td>{order.quantity}</td>
               <td>₹{parseFloat(order.total_amount).toLocaleString()}</td>
               <td>
-                {order.status === 'cancelled' ? (
-                  <span style={{ color: '#999' }}>cancelled</span>
-                ) : (
-                  <select
-                    className="status-select"
-                    value={order.status}
-                    onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                )}
+                {(() => {
+                  const next = ALLOWED_TRANSITIONS[order.status] ?? [];
+                  if (next.length === 0) {
+                    return <span style={{ color: '#999' }}>{order.status}</span>;
+                  }
+                  return (
+                    <select
+                      className="status-select"
+                      value={order.status}
+                      onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                    >
+                      <option value={order.status}>{order.status}</option>
+                      {next.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  );
+                })()}
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
               <td>
