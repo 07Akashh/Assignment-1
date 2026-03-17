@@ -1,22 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchOrders, updateOrderStatus } from '../api';
+
+const PAGE_LIMIT = parseInt(process.env.REACT_APP_PAGE_LIMIT || '50');
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
 
-  // BUG: No loading state, no error handling - shows blank screen if API fails
+  const loadOrders = useCallback(async (p = page) => {
+    const res = await fetchOrders({ page: p, limit: PAGE_LIMIT });
+    setOrders(Array.isArray(res.data) ? res.data : []);
+    setTotal(res.total || 0);
+  }, [page]);
+
   useEffect(() => {
-    fetchOrders().then(data => setOrders(data));
-  }, []);
+    loadOrders(page);
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStatusChange = async (orderId, newStatus) => {
     await updateOrderStatus(orderId, newStatus);
-    // BUG: useEffect has missing dependency - this manual refetch is a workaround
-    // but the stale closure over sortField/sortDir means sorting resets
-    const data = await fetchOrders();
-    setOrders(data);
+    loadOrders(page);
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -39,11 +45,12 @@ function OrderList() {
     }
   };
 
-  const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered'];
+  const totalPages = Math.ceil(total / PAGE_LIMIT);
+  const statusOptions = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 
   return (
     <div className="order-list">
-      <h2>Orders ({orders.length})</h2>
+      <h2>Orders ({total})</h2>
       <table className="order-table">
         <thead>
           <tr>
@@ -57,9 +64,8 @@ function OrderList() {
           </tr>
         </thead>
         <tbody>
-          {/* BUG: Using array index as key on a sortable list */}
-          {sortedOrders.map((order, index) => (
-            <tr key={index}>
+          {sortedOrders.map((order) => (
+            <tr key={order.id}>
               <td>#{order.id}</td>
               <td>
                 <div>{order.customer_name}</div>
@@ -84,6 +90,14 @@ function OrderList() {
           ))}
         </tbody>
       </table>
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1rem' }}>
+          <button onClick={() => setPage(p => p - 1)} disabled={page === 1}>← Prev</button>
+          <span>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => p + 1)} disabled={page === totalPages}>Next →</button>
+        </div>
+      )}
     </div>
   );
 }

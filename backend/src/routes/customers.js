@@ -4,12 +4,26 @@ const pool = require('../config/db');
 const { writeLimiter } = require('../middleware/limiters');
 
 const CUSTOMER_COLS = 'id, name, email, phone, created_at';
+const PAGE_LIMIT = parseInt(process.env.PAGE_LIMIT || '50');
 
 // Get all customers
 router.get('/', async (req, res, next) => {
   try {
-    const result = await pool.query(`SELECT ${CUSTOMER_COLS} FROM customers ORDER BY created_at DESC`);
-    res.json(result.rows);
+    const limit = Math.min(parseInt(req.query.limit) || PAGE_LIMIT, 100);
+    const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+    const offset = (page - 1) * limit;
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(`SELECT ${CUSTOMER_COLS} FROM customers ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+      pool.query('SELECT COUNT(*) FROM customers'),
+    ]);
+
+    res.json({
+      data:  dataResult.rows,
+      total: parseInt(countResult.rows[0].count),
+      page,
+      limit,
+    });
   } catch (err) {
     next(err);
   }

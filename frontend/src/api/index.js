@@ -1,7 +1,7 @@
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-export async function fetchOrders() {
-  const res = await fetch(`${API_BASE}/orders`);
+export async function fetchOrders({ page = 1, limit = 50 } = {}) {
+  const res = await fetch(`${API_BASE}/orders?page=${page}&limit=${limit}`);
   return res.json();
 }
 
