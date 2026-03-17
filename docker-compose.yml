@@ -1,8 +1,9 @@
-version: '3'
+version: '3.8'
 
 services:
   db:
     image: postgres:15
+    container_name: postgres-db
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
@@ -15,19 +16,33 @@ services:
 
   backend:
     build: ./backend
+    container_name: backend
     ports:
       - "3001:3001"
     environment:
       PORT: 3001
+      DB_HOST: db
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      DB_NAME: orderdb
     depends_on:
       - db
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
 
   frontend:
     build: ./frontend
+    container_name: frontend
     ports:
       - "3000:3000"
     depends_on:
       - backend
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
 
 volumes:
   pgdata:
