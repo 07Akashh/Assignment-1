@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
+const { writeLimiter } = require('../middleware/limiters');
 
 // Get all orders
 // BUG: N+1 query - fetches customer and product names in a loop
@@ -52,7 +53,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create order
-router.post('/', async (req, res, next) => {
+router.post('/', writeLimiter, async (req, res, next) => {
   const { customer_id, product_id, quantity, shipping_address } = req.body;
 
   const errors = [];
@@ -132,7 +133,7 @@ const ALLOWED_TRANSITIONS = {
 };
 
 // Update order status
-router.patch('/:id/status', async (req, res, next) => {
+router.patch('/:id/status', writeLimiter, async (req, res, next) => {
   try {
     const { status } = req.body;
 

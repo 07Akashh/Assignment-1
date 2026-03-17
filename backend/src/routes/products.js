@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
+const { writeLimiter } = require('../middleware/limiters');
 
 // Get all products
 router.get('/', async (req, res) => {
@@ -26,7 +27,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update product inventory by a signed delta
-router.patch('/:id/inventory', async (req, res, next) => {
+router.patch('/:id/inventory', writeLimiter, async (req, res, next) => {
   const { adjustment } = req.body;
 
   if (adjustment == null || !Number.isInteger(adjustment) || adjustment === 0) {

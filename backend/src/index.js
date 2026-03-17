@@ -4,6 +4,7 @@ const cors = require('cors');
 const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
+const { readLimiter } = require('./middleware/limiters');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,10 +24,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Routes
-app.use('/api/customers', customerRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
+// Routes — readLimiter applied globally; writeLimiter applied per handler in each route file
+app.use('/api/customers', readLimiter, customerRoutes);
+app.use('/api/products', readLimiter, productRoutes);
+app.use('/api/orders', readLimiter, orderRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
