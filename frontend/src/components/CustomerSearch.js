@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { searchCustomers, createCustomer } from '../api';
 
 function CustomerSearch() {
@@ -9,17 +9,41 @@ function CustomerSearch() {
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // BUG: No debounce - fires API call on every keystroke
-  // BUG: No loading state, no error handling - blank results if API fails
-  const handleSearch = async (value) => {
+  const debounceTimer = useRef(null);
+  const currentSearch = useRef(0);
+
+  useEffect(() => {
+    return () => clearTimeout(debounceTimer.current);
+  }, []);
+
+  const handleSearch = (value) => {
     setQuery(value);
-    if (value.length > 0) {
-      const data = await searchCustomers(value);
-      setResults(data);
-    } else {
+    setError(null);
+    clearTimeout(debounceTimer.current);
+
+    if (value.trim().length < 2) {
       setResults([]);
+      return;
     }
+
+    debounceTimer.current = setTimeout(async () => {
+      const seq = ++currentSearch.current;
+      setLoading(true);
+      try {
+        const data = await searchCustomers(value.trim());
+        if (seq !== currentSearch.current) return; // discard stale response
+        setResults(Array.isArray(data) ? data : []);
+      } catch {
+        if (seq !== currentSearch.current) return;
+        setError('Search failed. Please try again.');
+        setResults([]);
+      } finally {
+        if (seq === currentSearch.current) setLoading(false);
+      }
+    }, 300);
   };
 
   const handleAddCustomer = async () => {
@@ -88,15 +112,19 @@ function CustomerSearch() {
         </div>
       )}
 
-      {results.length > 0 ? (
-        results.map((customer, idx) => (
-          <div className="customer-card" key={idx}>
+      {loading && <p style={{ color: '#999' }}>Searching...</p>}
+      {error && <p style={{ color: '#c00' }}>{error}</p>}
+
+      {!loading && !error && results.length > 0 ? (
+        results.map((customer) => (
+          <div className="customer-card" key={customer.id}>
             <h3>{customer.name}</h3>
             <p>{customer.email} • {customer.phone}</p>
           </div>
         ))
       ) : (
-        query.length > 0 && <p style={{ color: '#999' }}>No customers found.</p>
+        !loading && !error && query.trim().length >= 2 && results.length === 0 &&
+          <p style={{ color: '#999' }}>No customers found.</p>
       )}
     </div>
   );
