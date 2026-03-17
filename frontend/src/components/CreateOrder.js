@@ -38,6 +38,14 @@ function CreateOrder() {
       setMessage({ type: 'error', text: 'Please fill all fields' });
       return;
     }
+    if (quantity < 1) {
+      setMessage({ type: 'error', text: 'Quantity must be at least 1' });
+      return;
+    }
+    if (selectedProductData && quantity > selectedProductData.inventory_count) {
+      setMessage({ type: 'error', text: `Only ${selectedProductData.inventory_count} unit(s) in stock` });
+      return;
+    }
 
     setSubmitting(true);
     setMessage(null);
@@ -104,6 +112,7 @@ function CreateOrder() {
         <input
           type="number"
           min="1"
+          max={selectedProductData ? selectedProductData.inventory_count : undefined}
           value={quantity}
           onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
         />

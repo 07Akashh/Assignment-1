@@ -185,7 +185,7 @@ router.patch('/:id/status', writeLimiter, async (req, res, next) => {
     }
 
     const result = await pool.query(
-      'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
       [status, req.params.id]
     );
     res.json({ data: result.rows[0] });
