@@ -290,6 +290,12 @@ body {
   cursor: not-allowed;
 }
 
+.field-error {
+  color: #c0392b;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
 .message {
   padding: 0.75rem;
   border-radius: 4px;
