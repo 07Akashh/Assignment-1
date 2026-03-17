@@ -7,9 +7,13 @@
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1"
   },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build"
+    "build": "react-scripts build",
+    "lint": "eslint src --ext .js,.jsx --max-warnings 0"
   },
   "proxy": "http://backend:3001",
   "browserslist": {

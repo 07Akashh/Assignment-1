@@ -4,29 +4,53 @@ CREATE TABLE customers (
     name VARCHAR(100) NOT NULL,
     email VARCHAR(150) UNIQUE NOT NULL,
     phone VARCHAR(20),
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    inventory_count INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW()
+    price DECIMAL(10, 2) NOT NULL CHECK (price > 0),
+    inventory_count INTEGER NOT NULL DEFAULT 0 CHECK (inventory_count >= 0),
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
-    customer_id INTEGER REFERENCES customers(id),
-    product_id INTEGER REFERENCES products(id),
-    quantity INTEGER NOT NULL,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',
-    shipping_address TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(10, 2) NOT NULL CHECK (unit_price > 0),
+    total_amount DECIMAL(10, 2) NOT NULL CHECK (total_amount > 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled')),
+    shipping_address TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Auto-update updated_at on any row change
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER orders_set_updated_at
+BEFORE UPDATE ON orders
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- Extensions
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Indexes
+CREATE INDEX idx_orders_customer_id      ON orders(customer_id);
+CREATE INDEX idx_orders_product_id       ON orders(product_id);
+CREATE INDEX idx_orders_status           ON orders(status);
+CREATE INDEX idx_orders_created_at       ON orders(created_at DESC);
+CREATE INDEX idx_customers_name_trgm     ON customers USING GIN (name gin_trgm_ops);
 
 -- Seed: Customers
 INSERT INTO customers (name, email, phone) VALUES
@@ -44,13 +68,21 @@ INSERT INTO products (name, description, price, inventory_count) VALUES
 ('Laptop Stand', 'Adjustable aluminum laptop stand', 1299.00, 40),
 ('Webcam HD', '1080p HD webcam with built-in microphone', 3499.00, 15);
 
--- Seed: Orders
-INSERT INTO orders (customer_id, product_id, quantity, total_amount, status, shipping_address) VALUES
-(1, 1, 2, 4998.00, 'delivered', '42 MG Road, Bangalore'),
-(2, 3, 1, 4599.00, 'shipped', '15 Park Street, Kolkata'),
-(3, 2, 3, 5697.00, 'pending', '88 Connaught Place, Delhi'),
-(1, 5, 1, 3499.00, 'pending', '42 MG Road, Bangalore'),
-(4, 4, 2, 2598.00, 'confirmed', '23 Jubilee Hills, Hyderabad'),
-(5, 1, 1, 2499.00, 'shipped', '7 Marine Drive, Mumbai'),
-(2, 2, 1, 1899.00, 'delivered', '15 Park Street, Kolkata'),
-(3, 3, 1, 4599.00, 'confirmed', '88 Connaught Place, Delhi');
+-- Seed: Orders (unit_price captures price at time of order)
+INSERT INTO orders (customer_id, product_id, quantity, unit_price, total_amount, status, shipping_address) VALUES
+(1, 1, 2, 2499.00, 4998.00, 'delivered', '42 MG Road, Bangalore'),
+(2, 3, 1, 4599.00, 4599.00, 'shipped',   '15 Park Street, Kolkata'),
+(3, 2, 3, 1899.00, 5697.00, 'pending',   '88 Connaught Place, Delhi'),
+(1, 5, 1, 3499.00, 3499.00, 'pending',   '42 MG Road, Bangalore'),
+(4, 4, 2, 1299.00, 2598.00, 'confirmed', '23 Jubilee Hills, Hyderabad'),
+(5, 1, 1, 2499.00, 2499.00, 'shipped',   '7 Marine Drive, Mumbai'),
+(2, 2, 1, 1899.00, 1899.00, 'delivered', '15 Park Street, Kolkata'),
+(3, 3, 1, 4599.00, 4599.00, 'confirmed', '88 Connaught Place, Delhi');
+
+-- Decrement inventory to reflect seeded orders
+-- Earbuds: qty 2 + 1 = 3, Hub: qty 3 + 1 = 4, Keyboard: qty 1 + 1 = 2, Stand: qty 2, Webcam: qty 1
+UPDATE products SET inventory_count = inventory_count - 3 WHERE id = 1;
+UPDATE products SET inventory_count = inventory_count - 4 WHERE id = 2;
+UPDATE products SET inventory_count = inventory_count - 2 WHERE id = 3;
+UPDATE products SET inventory_count = inventory_count - 2 WHERE id = 4;
+UPDATE products SET inventory_count = inventory_count - 1 WHERE id = 5;

@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  lint-backend:
+    name: Lint — Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+      - run: npm install
+      - run: npm run lint
+
+  lint-frontend:
+    name: Lint — Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+      - run: npm install
+      - run: npm run lint
+
+  integration:
+    name: Integration — Health & Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [lint-backend, lint-frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create environment file
+        run: |
+          cat > .env << 'EOF'
+          DB_USER=postgres
+          DB_PASSWORD=ci_secret_123
+          DB_NAME=orders_db
+          NODE_ENV=production
+          ALLOWED_ORIGINS=http://localhost:3000
+          RATE_LIMIT_WINDOW_MS=60000
+          RATE_LIMIT_READ_MAX=100
+          RATE_LIMIT_WRITE_MAX=20
+          PAGE_LIMIT=50
+          SHUTDOWN_TIMEOUT_MS=10000
+          REACT_APP_API_URL=http://localhost:3001/api
+          REACT_APP_PAGE_LIMIT=50
+          EOF
+
+      # Only start db + backend — frontend is a static build and not needed for API tests
+      - name: Build and start db + backend
+        run: docker compose up -d --build db backend
+
+      - name: Wait for backend to be healthy
+        run: |
+          echo "Waiting for backend health..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/health | grep -q '"db":"ok"'; then
+              echo "Backend healthy after $((i * 5))s"
+              exit 0
+            fi
+            echo "  attempt $i/30 — retrying in 5s..."
+            sleep 5
+          done
+          echo "ERROR: backend did not become healthy within 150s"
+          docker compose logs
+          exit 1
+
+      - name: Health check — app + DB reachable
+        run: |
+          response=$(curl -sf http://localhost:3001/api/health)
+          echo "$response"
+          echo "$response" | grep -q '"status":"ok"'
+          echo "$response" | grep -q '"db":"ok"'
+
+      - name: Smoke — GET /api/orders returns paginated data
+        run: curl -sf http://localhost:3001/api/orders | grep -q '"data"'
+
+      - name: Smoke — GET /api/products returns data
+        run: curl -sf http://localhost:3001/api/products | grep -q '"data"'
+
+      - name: Smoke — GET /api/customers returns paginated data
+        run: curl -sf http://localhost:3001/api/customers | grep -q '"data"'
+
+      - name: Smoke — invalid order returns 400
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:3001/api/orders \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          [ "$status" = "400" ]
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
