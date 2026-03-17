@@ -146,6 +146,15 @@ const ALLOWED_TRANSITIONS = {
   cancelled: [],
 };
 
+// Derived reverse map: target status → array of valid prior statuses
+const ALLOWED_TRANSITIONS_REVERSE = Object.entries(ALLOWED_TRANSITIONS).reduce((acc, [from, tos]) => {
+  tos.forEach(to => {
+    if (!acc[to]) acc[to] = [];
+    acc[to].push(from);
+  });
+  return acc;
+}, {});
+
 // Update order status
 router.patch('/:id/status', writeLimiter, async (req, res, next) => {
   try {
@@ -165,29 +174,38 @@ router.patch('/:id/status', writeLimiter, async (req, res, next) => {
       return next(err);
     }
 
-    const current = await pool.query('SELECT status FROM orders WHERE id = $1', [req.params.id]);
-    if (current.rows.length === 0) {
-      const err = new Error('Order not found');
-      err.status = 404;
+    const validPriorStatuses = ALLOWED_TRANSITIONS_REVERSE[status];
+    if (!validPriorStatuses) {
+      const err = new Error(`"${status}" is not reachable from any state`);
+      err.status = 422;
       err.isOperational = true;
       return next(err);
     }
 
-    const currentStatus = current.rows[0].status;
-    if (!ALLOWED_TRANSITIONS[currentStatus].includes(status)) {
+    // Single atomic query: update only if current status is a valid predecessor
+    const result = await pool.query(
+      'UPDATE orders SET status = $1 WHERE id = $2 AND status = ANY($3) RETURNING *',
+      [status, req.params.id, validPriorStatuses]
+    );
+
+    if (result.rows.length === 0) {
+      // Distinguish "not found" from "invalid transition"
+      const check = await pool.query('SELECT status FROM orders WHERE id = $1', [req.params.id]);
+      if (check.rows.length === 0) {
+        const err = new Error('Order not found');
+        err.status = 404;
+        err.isOperational = true;
+        return next(err);
+      }
       const err = new Error(
-        `Cannot transition order from "${currentStatus}" to "${status}". ` +
-        `Allowed: ${ALLOWED_TRANSITIONS[currentStatus].join(', ') || 'none'}`
+        `Cannot transition order from "${check.rows[0].status}" to "${status}". ` +
+        `Allowed: ${ALLOWED_TRANSITIONS[check.rows[0].status].join(', ') || 'none'}`
       );
       err.status = 422;
       err.isOperational = true;
       return next(err);
     }
 
-    const result = await pool.query(
-      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING *',
-      [status, req.params.id]
-    );
     res.json({ data: result.rows[0] });
   } catch (err) {
     next(err);
