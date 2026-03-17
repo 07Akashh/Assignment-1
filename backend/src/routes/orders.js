@@ -17,8 +17,7 @@ router.get('/', async (req, res, next) => {
         `SELECT o.*,
                 c.name  AS customer_name,
                 c.email AS customer_email,
-                p.name  AS product_name,
-                p.price AS product_price
+                p.name  AS product_name
          FROM orders o
          JOIN customers c ON o.customer_id = c.id
          JOIN products  p ON o.product_id  = p.id
@@ -45,7 +44,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT o.*, c.name as customer_name, c.email as customer_email,
-              p.name as product_name, p.price as product_price
+              p.name as product_name
        FROM orders o
        JOIN customers c ON o.customer_id = c.id
        JOIN products p ON o.product_id = p.id
@@ -100,8 +99,8 @@ router.post('/', writeLimiter, async (req, res, next) => {
          SELECT id FROM products WHERE id = $2
        ),
        new_order AS (
-         INSERT INTO orders (customer_id, product_id, quantity, total_amount, shipping_address, status)
-         SELECT $3, $2, $1, r.price * $1, $4, 'pending'
+         INSERT INTO orders (customer_id, product_id, quantity, unit_price, total_amount, shipping_address, status)
+         SELECT $3, $2, $1, r.price, r.price * $1, $4, 'pending'
          FROM   reserved r
          RETURNING *
        )
