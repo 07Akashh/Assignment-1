@@ -10,46 +10,76 @@ function CreateOrder() {
   const [address, setAddress] = useState('');
   const [message, setMessage] = useState(null);
 
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
   // Load customers and products
   useEffect(() => {
-    fetchCustomers().then(setCustomers);
-    fetchProducts().then(setProducts);
+    async function init() {
+      try {
+        setLoading(true);
+        const [cData, pData] = await Promise.all([fetchCustomers(), fetchProducts()]);
+        
+        if (cData.error) throw new Error(cData.error);
+        if (pData.error) throw new Error(pData.error);
+        
+        setCustomers(cData);
+        setProducts(pData);
+      } catch (err) {
+        setError('Failed to load initial data');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
   }, []);
 
-  // BUG: Missing dependency - selectedProduct is used inside but not in dep array.
-  // This means `selectedProductData` shows stale info when user changes product selection.
-  const [selectedProductData, setSelectedProductData] = useState(null);
-  useEffect(() => {
-    if (selectedProduct) {
-      const product = products.find(p => p.id === parseInt(selectedProduct));
-      setSelectedProductData(product);
-    }
-  }, [products]); // Missing: selectedProduct
+  // Optimized: Derive product data directly from state instead of using a separate useEffect
+  const selectedProductData = products.find(p => p.id === parseInt(selectedProduct)) || null;
 
   const handleSubmit = async () => {
     if (!selectedCustomer || !selectedProduct || !address) {
-      setMessage({ type: 'error', text: 'Please fill all fields' });
+      setMessage({ type: 'error', text: 'Please fill all required fields' });
       return;
     }
 
-    const result = await createOrder({
-      customer_id: parseInt(selectedCustomer),
-      product_id: parseInt(selectedProduct),
-      quantity: quantity,
-      shipping_address: address,
-    });
+    if (selectedProductData && quantity > selectedProductData.inventory_count) {
+      setMessage({ type: 'error', text: 'Insufficient stock available' });
+      return;
+    }
 
-    if (result.error) {
-      setMessage({ type: 'error', text: result.error });
-    } else {
-      setMessage({ type: 'success', text: `Order #${result.id} created successfully!` });
-      setSelectedCustomer('');
-      setSelectedProduct('');
-      setQuantity(1);
-      setAddress('');
-      setSelectedProductData(null);
+    try {
+      setSubmitting(true);
+      setMessage(null);
+      const result = await createOrder({
+        customer_id: parseInt(selectedCustomer),
+        product_id: parseInt(selectedProduct),
+        quantity: quantity,
+        shipping_address: address,
+      });
+
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error });
+      } else {
+        setMessage({ type: 'success', text: `Order #${result.id} created successfully!` });
+        setSelectedCustomer('');
+        setSelectedProduct('');
+        setQuantity(1);
+        setAddress('');
+        // Refresh products to show updated stock
+        fetchProducts().then(setProducts);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'An unexpected error occurred' });
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  if (loading) return <div className="loader">Loading customers and products...</div>;
+  if (error) return <div className="message error">{error}</div>;
 
   return (
     <div className="create-order">
@@ -107,8 +137,12 @@ function CreateOrder() {
         />
       </div>
 
-      <button className="submit-btn" onClick={handleSubmit}>
-        Place Order
+      <button 
+        className="submit-btn" 
+        onClick={handleSubmit} 
+        disabled={submitting}
+      >
+        {submitting ? 'Placing Order...' : 'Place Order'}
       </button>
     </div>
   );
