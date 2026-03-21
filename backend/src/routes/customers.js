@@ -17,10 +17,16 @@ router.get('/', async (req, res) => {
 router.get('/search', async (req, res) => {
   try {
     const { name } = req.query;
-    const query = "SELECT * FROM customers WHERE name ILIKE '%" + name + "%'";
-    const result = await pool.query(query);
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Invalid search term' });
+    }
+    const result = await pool.query(
+      'SELECT * FROM customers WHERE name ILIKE $1',
+      [`%${name}%`]
+    );
     res.json(result.rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Search failed' });
   }
 });

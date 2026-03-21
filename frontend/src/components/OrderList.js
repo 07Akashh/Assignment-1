@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchOrders, updateOrderStatus } from '../api';
+import { fetchOrders, updateOrderStatus, cancelOrder } from '../api';
 
 function OrderList() {
   const [orders, setOrders] = useState([]);
@@ -12,11 +12,32 @@ function OrderList() {
   }, []);
 
   const handleStatusChange = async (orderId, newStatus) => {
-    await updateOrderStatus(orderId, newStatus);
-    // BUG: useEffect has missing dependency - this manual refetch is a workaround
-    // but the stale closure over sortField/sortDir means sorting resets
-    const data = await fetchOrders();
-    setOrders(data);
+    try {
+      await updateOrderStatus(orderId, newStatus);
+      const data = await fetchOrders();
+      setOrders(data);
+    } catch (error) {
+      console.error(error);
+      alert('Failed to update order status.');
+    }
+  };
+
+  const handleCancel = async (orderId) => {
+    const confirmed = window.confirm('Cancel this order? This will restore inventory.');
+    if (!confirmed) return;
+
+    try {
+      const result = await cancelOrder(orderId);
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+      const data = await fetchOrders();
+      setOrders(data);
+    } catch (error) {
+      console.error(error);
+      alert('Failed to cancel order.');
+    }
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
@@ -53,13 +74,14 @@ function OrderList() {
             <th onClick={() => handleSort('quantity')} style={{ cursor: 'pointer' }}>Qty</th>
             <th onClick={() => handleSort('total_amount')} style={{ cursor: 'pointer' }}>Total</th>
             <th>Status</th>
+            <th>Cancel</th>
             <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Date</th>
           </tr>
         </thead>
         <tbody>
           {/* BUG: Using array index as key on a sortable list */}
-          {sortedOrders.map((order, index) => (
-            <tr key={index}>
+          {sortedOrders.map((order) => (
+            <tr key={order.id}>
               <td>#{order.id}</td>
               <td>
                 <div>{order.customer_name}</div>
@@ -78,6 +100,19 @@ function OrderList() {
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
+              </td>
+              <td>
+                {['pending', 'confirmed'].includes(order.status) ? (
+                  <button
+                    className="cancel-btn"
+                    onClick={() => handleCancel(order.id)}
+                    style={{ marginLeft: '0.5rem', background: '#d9534f', color: '#fff', border: 'none', borderRadius: '4px', padding: '0.25rem 0.4rem', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <span style={{ color: '#777' }}>N/A</span>
+                )}
               </td>
               <td>{new Date(order.created_at).toLocaleDateString()}</td>
             </tr>
