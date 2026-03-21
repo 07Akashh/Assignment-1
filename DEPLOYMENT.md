@@ -8,67 +8,48 @@ This project was updated to follow production-ready Docker practices for both fr
 
 ## Key Improvements
 
-### 1. Multi-stage build for frontend
+### 1. Optimized Dependency Installation
 
-* Used Node.js to build the React app
-* Served static files using Nginx
-* Reduced image size and improved performance
+  ```
+  COPY . . RUN npm install
+  ```
 
-### 2. Removed development dependencies
+  ```
+  COPY package*.json ./ RUN npm install COPY . .
+  ```
+
+* Enables Docker layer caching
+* Dependencies are installed only when package.json changes
+* Significantly faster rebuilds
+
+### 2. Switched to Lightweight Base Image
 
 * Replaced `nodemon` with `node` in backend
 * Installed only production dependencies using:
 
   ```
-  npm install --only=production
+  FROM node:18
   ```
 
-### 3. Removed volume mounts
+  ```
+  FROM node:18-alpine
+  ```
 
-* Code is now copied into the container at build time
-* Ensures consistency across environments
+### 3. Improved Build Performance
 
-### 4. Environment variables
+* Avoids reinstalling dependencies on every code change
+* Better suited for iterative development
 
-* Moved sensitive data (DB credentials) to `.env` file
-* Avoids hardcoding secrets in source code
+### 4. Maintained Development Workflow
 
-### 5. Improved security
+* Still uses:
 
-* Removed database port exposure to the host
-* Services communicate via internal Docker network
+  ```
+  npm start
+  ```
 
-### 6. Optimized frontend serving
+* Supports hot reloading (with volumes in docker-compose)
 
-* React app is built using `npm run build`
-* Served via Nginx for better performance and scalability
 
----
 
-## How to Run
 
-1. Create a `.env` file:
-
-```
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=admin123
-POSTGRES_DB=orderdb
-```
-
-2. Build and start services:
-
-```
-docker compose up --build
-```
-
-3. Access application:
-
-* Frontend: http://localhost
-* Backend: http://localhost:3001
-
----
-
-## Notes
-
-* Development setup (with hot reload) is separate from production setup
-* This configuration is optimized for deployment environments

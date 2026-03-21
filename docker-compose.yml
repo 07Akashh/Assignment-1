@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
@@ -27,9 +25,6 @@ services:
       DB_NAME: orderdb
     depends_on:
       - db
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
 
   frontend:
     build: ./frontend
